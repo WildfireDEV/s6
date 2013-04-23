@@ -67,16 +67,16 @@
 #include "iwl-agn-hw.h"
 
 /* Highest firmware API version supported */
-#define IWL7260_UCODE_API_MAX	7
-#define IWL3160_UCODE_API_MAX	7
+#define IWL7260_UCODE_API_MAX	6
+#define IWL3160_UCODE_API_MAX	6
 
 /* Oldest version we won't warn about */
-#define IWL7260_UCODE_API_OK	7
-#define IWL3160_UCODE_API_OK	7
+#define IWL7260_UCODE_API_OK	6
+#define IWL3160_UCODE_API_OK	6
 
 /* Lowest firmware API version supported */
-#define IWL7260_UCODE_API_MIN	7
-#define IWL3160_UCODE_API_MIN	7
+#define IWL7260_UCODE_API_MIN	6
+#define IWL3160_UCODE_API_MIN	6
 
 /* NVM versions */
 #define IWL7260_NVM_VERSION		0x0a1d
@@ -131,7 +131,6 @@ const struct iwl_cfg iwl7260_2ac_cfg = {
 	.ht_params = &iwl7000_ht_params,
 	.nvm_ver = IWL7260_NVM_VERSION,
 	.nvm_calib_ver = IWL7260_TX_POWER_VERSION,
-	.host_interrupt_operation_mode = true,
 };
 
 const struct iwl_cfg iwl7260_2n_cfg = {
@@ -141,7 +140,6 @@ const struct iwl_cfg iwl7260_2n_cfg = {
 	.ht_params = &iwl7000_ht_params,
 	.nvm_ver = IWL7260_NVM_VERSION,
 	.nvm_calib_ver = IWL7260_TX_POWER_VERSION,
-	.host_interrupt_operation_mode = true,
 };
 
 const struct iwl_cfg iwl7260_n_cfg = {
@@ -151,7 +149,6 @@ const struct iwl_cfg iwl7260_n_cfg = {
 	.ht_params = &iwl7000_ht_params,
 	.nvm_ver = IWL7260_NVM_VERSION,
 	.nvm_calib_ver = IWL7260_TX_POWER_VERSION,
-	.host_interrupt_operation_mode = true,
 };
 
 const struct iwl_cfg iwl3160_2ac_cfg = {
@@ -161,7 +158,6 @@ const struct iwl_cfg iwl3160_2ac_cfg = {
 	.ht_params = &iwl7000_ht_params,
 	.nvm_ver = IWL3160_NVM_VERSION,
 	.nvm_calib_ver = IWL3160_TX_POWER_VERSION,
-	.host_interrupt_operation_mode = true,
 };
 
 const struct iwl_cfg iwl3160_2n_cfg = {
@@ -171,7 +167,6 @@ const struct iwl_cfg iwl3160_2n_cfg = {
 	.ht_params = &iwl7000_ht_params,
 	.nvm_ver = IWL3160_NVM_VERSION,
 	.nvm_calib_ver = IWL3160_TX_POWER_VERSION,
-	.host_interrupt_operation_mode = true,
 };
 
 const struct iwl_cfg iwl3160_n_cfg = {
@@ -181,7 +176,6 @@ const struct iwl_cfg iwl3160_n_cfg = {
 	.ht_params = &iwl7000_ht_params,
 	.nvm_ver = IWL3160_NVM_VERSION,
 	.nvm_calib_ver = IWL3160_TX_POWER_VERSION,
-	.host_interrupt_operation_mode = true,
 };
 
 MODULE_FIRMWARE(IWL7260_MODULE_FIRMWARE(IWL7260_UCODE_API_OK));
