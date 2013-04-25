@@ -34,7 +34,6 @@ DEFINE_PER_CPU(struct tick_device, tick_cpu_device);
 ktime_t tick_next_period;
 ktime_t tick_period;
 int tick_do_timer_cpu __read_mostly = TICK_DO_TIMER_BOOT;
-static DEFINE_RAW_SPINLOCK(tick_device_lock);
 
 /*
  * Debugging: see timer_list.c
@@ -71,7 +70,6 @@ static void tick_periodic(int cpu)
 
 		do_timer(1);
 		write_sequnlock(&jiffies_lock);
-		update_wall_time();
 	}
 
 	update_process_times(user_mode(get_irq_regs()));
@@ -196,8 +194,7 @@ static void tick_setup_device(struct tick_device *td,
 	 * When global broadcasting is active, check if the current
 	 * device is registered as a placeholder for broadcast mode.
 	 * This allows us to handle this x86 misfeature in a generic
-	 * way. This function also returns !=0 when we keep the
-	 * current active broadcast state for this CPU.
+	 * way.
 	 */
 	if (tick_device_uses_broadcast(newdev, cpu))
 		return;
@@ -235,26 +232,19 @@ static bool tick_check_preferred(struct clock_event_device *curdev,
 			return false;
 	}
 
-	/*
-	 * Use the higher rated one, but prefer a CPU local device with a lower
-	 * rating than a non-CPU local device
-	 */
-	return !curdev ||
-		newdev->rating > curdev->rating ||
-	       !cpumask_equal(curdev->cpumask, newdev->cpumask);
+	/* Use the higher rated one */
+	return !curdev || newdev->rating > curdev->rating;
 }
 
 /*
- * Check, if the new registered device should be used.
+ * Check, if the new registered device should be used. Called with
+ * clockevents_lock held and interrupts disabled.
  */
 void tick_check_new_device(struct clock_event_device *newdev)
 {
 	struct clock_event_device *curdev;
 	struct tick_device *td;
 	int cpu;
-	unsigned long flags;
-
-	raw_spin_lock_irqsave(&tick_device_lock, flags);
 
 	cpu = smp_processor_id();
 	if (!cpumask_test_cpu(cpu, newdev->cpumask))
@@ -287,8 +277,6 @@ void tick_check_new_device(struct clock_event_device *newdev)
 	tick_setup_device(td, newdev, cpu, cpumask_of(cpu));
 	if (newdev->features & CLOCK_EVT_FEAT_ONESHOT)
 		tick_oneshot_notify();
-
-	raw_spin_unlock_irqrestore(&tick_device_lock, flags);
 	return;
 
 out_bc:
@@ -296,7 +284,6 @@ out_bc:
 	 * Can the new device be used as a broadcast device ?
 	 */
 	tick_install_broadcast_device(newdev);
-	raw_spin_unlock_irqrestore(&tick_device_lock, flags);
 }
 
 /*
@@ -325,9 +312,7 @@ void tick_shutdown(unsigned int *cpup)
 {
 	struct tick_device *td = &per_cpu(tick_cpu_device, *cpup);
 	struct clock_event_device *dev = td->evtdev;
-	unsigned long flags;
 
-	raw_spin_lock_irqsave(&tick_device_lock, flags);
 	td->mode = TICKDEV_MODE_PERIODIC;
 	if (dev) {
 		/*
@@ -339,26 +324,20 @@ void tick_shutdown(unsigned int *cpup)
 		dev->event_handler = clockevents_handle_noop;
 		td->evtdev = NULL;
 	}
-	raw_spin_unlock_irqrestore(&tick_device_lock, flags);
 }
 
 void tick_suspend(void)
 {
 	struct tick_device *td = &__get_cpu_var(tick_cpu_device);
-	unsigned long flags;
 
-	raw_spin_lock_irqsave(&tick_device_lock, flags);
 	clockevents_shutdown(td->evtdev);
-	raw_spin_unlock_irqrestore(&tick_device_lock, flags);
 }
 
 void tick_resume(void)
 {
 	struct tick_device *td = &__get_cpu_var(tick_cpu_device);
-	unsigned long flags;
 	int broadcast = tick_resume_broadcast();
 
-	raw_spin_lock_irqsave(&tick_device_lock, flags);
 	clockevents_set_mode(td->evtdev, CLOCK_EVT_MODE_RESUME);
 
 	if (!broadcast) {
@@ -367,7 +346,6 @@ void tick_resume(void)
 		else
 			tick_resume_oneshot();
 	}
-	raw_spin_unlock_irqrestore(&tick_device_lock, flags);
 }
 
 /**
