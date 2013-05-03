@@ -1892,7 +1892,6 @@ err3:
 err2:
 	clk_disable_unprepare(sdd->clk);
 err0:
-	platform_set_drvdata(pdev, NULL);
 	spi_master_put(master);
 
 	return ret;
@@ -1916,7 +1915,6 @@ static int s3c64xx_spi_remove(struct platform_device *pdev)
 
 	clk_disable_unprepare(sdd->clk);
 
-	platform_set_drvdata(pdev, NULL);
 	spi_master_put(master);
 
 	return 0;
