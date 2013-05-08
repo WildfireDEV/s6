@@ -30,6 +30,7 @@ struct wm_adsp_alg_region {
 	unsigned int alg;
 	int type;
 	unsigned int base;
+	size_t len;
 };
 
 struct wm_adsp_buffer_region {
@@ -126,6 +127,12 @@ struct wm_adsp {
 	char *bin_file_loaded;
 #endif
 
+<<<<<<< HEAD
+=======
+	struct regulator *dvfs;
+
+	struct wm_coeff *wm_coeff;
+>>>>>>> 6ab2b7b... ASoC: wm_adsp: Expose coefficient blocks as ALSA binary controls
 };
 
 #define WM_ADSP1(wname, num) \
