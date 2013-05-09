@@ -70,6 +70,9 @@
 #include "bfq.h"
 #include "blk.h"
 
+/* Max number of dispatches in one round of service. */
+static const int bfq_quantum = 4;
+
 /* Expiration time of sync (0) and async (1) requests, in jiffies. */
 static const int bfq_fifo_expire[2] = { HZ / 4, HZ / 8 };
 
@@ -380,6 +383,7 @@ static void bfq_rq_pos_tree_add(struct bfq_data *bfqd, struct bfq_queue *bfqq)
  */
 static inline bool bfq_differentiated_weights(struct bfq_data *bfqd)
 {
+	BUG_ON(!bfqd->hw_tag);
 	/*
 	 * For weights to differ, at least one of the trees must contain
 	 * at least two nodes.
@@ -467,6 +471,14 @@ static void bfq_weights_tree_remove(struct bfq_data *bfqd,
 				    struct bfq_entity *entity,
 				    struct rb_root *root)
 {
+	/*
+	 * Check whether the entity is actually associated with a counter.
+	 * In fact, the device may not be considered NCQ-capable for a while,
+	 * which implies that no insertion in the weight trees is performed,
+	 * after which the device may start to be deemed NCQ-capable, and hence
+	 * this function may start to be invoked. This may cause the function
+	 * to be invoked for entities that are not associated with any counter.
+	 */
 	if (!entity->weight_counter)
 		return;
 
@@ -1258,6 +1270,7 @@ static struct bfq_queue *bfqq_close(struct bfq_data *bfqd, sector_t sector)
 	struct rb_root *root = &bfqd->rq_pos_tree;
 	struct rb_node *parent, *node;
 	struct bfq_queue *__bfqq;
+	sector_t sector = bfqd->last_position;
 
 	if (RB_EMPTY_ROOT(root))
 		return NULL;
@@ -1800,6 +1813,61 @@ static struct request *bfq_check_fifo(struct bfq_queue *bfqq)
 		return NULL;
 
 	return rq;
+}
+
+/* Must be called with the queue_lock held. */
+static int bfqq_process_refs(struct bfq_queue *bfqq)
+{
+	int process_refs, io_refs;
+
+	io_refs = bfqq->allocated[READ] + bfqq->allocated[WRITE];
+	process_refs = atomic_read(&bfqq->ref) - io_refs - bfqq->entity.on_st;
+	BUG_ON(process_refs < 0);
+	return process_refs;
+}
+
+static void bfq_setup_merge(struct bfq_queue *bfqq, struct bfq_queue *new_bfqq)
+{
+	int process_refs, new_process_refs;
+	struct bfq_queue *__bfqq;
+
+	/*
+	 * If there are no process references on the new_bfqq, then it is
+	 * unsafe to follow the ->new_bfqq chain as other bfqq's in the chain
+	 * may have dropped their last reference (not just their last process
+	 * reference).
+	 */
+	if (!bfqq_process_refs(new_bfqq))
+		return;
+
+	/* Avoid a circular list and skip interim queue merges. */
+	while ((__bfqq = new_bfqq->new_bfqq)) {
+		if (__bfqq == bfqq)
+			return;
+		new_bfqq = __bfqq;
+	}
+
+	process_refs = bfqq_process_refs(bfqq);
+	new_process_refs = bfqq_process_refs(new_bfqq);
+	/*
+	 * If the process for the bfqq has gone away, there is no
+	 * sense in merging the queues.
+	 */
+	if (process_refs == 0 || new_process_refs == 0)
+		return;
+
+	/*
+	 * Merge in the direction of the lesser amount of work.
+	 */
+	if (new_process_refs >= process_refs) {
+		bfqq->new_bfqq = new_bfqq;
+		atomic_add(process_refs, &new_bfqq->ref);
+	} else {
+		new_bfqq->new_bfqq = bfqq;
+		atomic_add(new_process_refs, &bfqq->ref);
+	}
+	bfq_log_bfqq(bfqq->bfqd, bfqq, "scheduling merge with queue %d",
+		new_bfqq->pid);
 }
 
 static inline unsigned long bfq_bfqq_budget_left(struct bfq_queue *bfqq)
@@ -2477,6 +2545,12 @@ static inline int bfq_may_expire_for_budg_timeout(struct bfq_queue *bfqq)
 static inline bool bfq_bfqq_must_not_expire(struct bfq_queue *bfqq)
 {
 	struct bfq_data *bfqd = bfqq->bfqd;
+#ifdef CONFIG_CGROUP_BFQIO
+#define symmetric_scenario	  (!bfqd->active_numerous_groups && \
+				   !bfq_differentiated_weights(bfqd))
+#else
+#define symmetric_scenario	  (!bfq_differentiated_weights(bfqd))
+#endif
 #define cond_for_seeky_on_ncq_hdd (bfq_bfqq_constantly_seeky(bfqq) && \
 				   bfqd->busy_in_flight_queues == \
 				   bfqd->const_seeky_busy_in_flight_queues)
@@ -2538,6 +2612,17 @@ static struct bfq_queue *bfq_select_queue(struct bfq_data *bfqd)
 
 	bfq_log_bfqq(bfqd, bfqq, "select_queue: already in-service queue");
 
+	/*
+         * If another queue has a request waiting within our mean seek
+         * distance, let it run. The expire code will check for close
+         * cooperators and put the close queue at the front of the
+         * service tree. If possible, merge the expiring queue with the
+         * new bfqq.
+         */
+        new_bfqq = bfq_close_cooperator(bfqd, bfqq);
+        if (new_bfqq != NULL && bfqq->new_bfqq == NULL)
+                bfq_setup_merge(bfqq, new_bfqq);
+
 	if (bfq_may_expire_for_budg_timeout(bfqq) &&
 	    !timer_pending(&bfqd->idle_slice_timer) &&
 	    !bfq_bfqq_must_idle(bfqq))
@@ -2589,6 +2674,13 @@ static struct bfq_queue *bfq_select_queue(struct bfq_data *bfqd)
 	    (bfqq->dispatched != 0 && bfq_bfqq_must_not_expire(bfqq))) {
 		bfqq = NULL;
 		goto keep_queue;
+	} else if (new_bfqq != NULL && timer_pending(&bfqd->idle_slice_timer)) {
+		/*
+		 * Expiring the queue because there is a close cooperator,
+		 * cancel timer.
+		 */
+		bfq_clear_bfqq_wait_request(bfqq);
+		del_timer(&bfqd->idle_slice_timer);
 	}
 
 	reason = BFQ_BFQQ_NO_MORE_REQUESTS;
@@ -2635,6 +2727,9 @@ static void bfq_update_wr_data(struct bfq_data *bfqd, struct bfq_queue *bfqq)
 				     bfqq->last_wr_start_finish,
 				     jiffies_to_msecs(bfqq->wr_cur_max_time));
 			bfq_bfqq_end_wr(bfqq);
+			__bfq_entity_update_weight_prio(
+				bfq_entity_service_tree(entity),
+				entity);
 		}
 	}
 	/* Update weight both if it must be raised and if it must be lowered */
@@ -2782,6 +2877,7 @@ static int bfq_dispatch_requests(struct request_queue *q, int force)
 	if (bfqq == NULL)
 		return 0;
 
+	max_dispatch = bfqd->bfq_quantum;
 	if (bfq_class_idle(bfqq))
 		max_dispatch = 1;
 
@@ -2941,6 +3037,9 @@ static void bfq_set_next_ioprio_data(struct bfq_queue *bfqq, struct bfq_io_cq *b
 	struct task_struct *tsk = current;
 	int ioprio_class;
 
+	if (!bfq_bfqq_prio_changed(bfqq))
+		return;
+
 	ioprio_class = IOPRIO_PRIO_CLASS(bic->ioprio);
 	switch (ioprio_class) {
 	default:
@@ -2977,6 +3076,8 @@ static void bfq_set_next_ioprio_data(struct bfq_queue *bfqq, struct bfq_io_cq *b
 
 	bfqq->entity.new_weight = bfq_ioprio_to_weight(bfqq->entity.new_ioprio);
 	bfqq->entity.ioprio_changed = 1;
+
+	bfq_clear_bfqq_prio_changed(bfqq);
 }
 
 static void bfq_check_ioprio_change(struct bfq_io_cq *bic)
@@ -3098,6 +3199,9 @@ retry:
 			bfqq = &bfqd->oom_bfqq;
 			bfq_log_bfqq(bfqd, bfqq, "using oom bfqq");
 		}
+
+		bfq_init_prio_data(bfqq, bic);
+		bfq_init_entity(&bfqq->entity, bfqg);
 	}
 
 	if (new_bfqq != NULL)
@@ -3507,6 +3611,7 @@ static int bfq_may_queue(struct request_queue *q, int rw)
 	bfqq = bic_to_bfqq(bic, rw_is_sync(rw));
 	if (bfqq != NULL)
 		return __bfq_may_queue(bfqq);
+	}
 
 	return ELV_MQUEUE_MAY;
 }
@@ -3531,6 +3636,18 @@ static void bfq_put_request(struct request *rq)
 			     bfqq, atomic_read(&bfqq->ref));
 		bfq_put_queue(bfqq);
 	}
+}
+
+static struct bfq_queue *
+bfq_merge_bfqqs(struct bfq_data *bfqd, struct bfq_io_cq *bic,
+		struct bfq_queue *bfqq)
+{
+	bfq_log_bfqq(bfqd, bfqq, "merging with queue %lu",
+		(long unsigned)bfqq->new_bfqq->pid);
+	bic_set_bfqq(bic, bfqq->new_bfqq, 1);
+	bfq_mark_bfqq_coop(bfqq->new_bfqq);
+	bfq_put_queue(bfqq);
+	return bic_to_bfqq(bic, 1);
 }
 
 /*
@@ -3610,6 +3727,15 @@ new_queue:
 			if (!bfqq)
 				goto new_queue;
 		}
+
+		/*
+		 * Check to see if this queue is scheduled to merge with
+		 * another closely cooperating queue. The merging of queues
+		 * happens here as it must be done in process context.
+		 * The reference on new_bfqq was taken in merge_bfqqs.
+		 */
+		if (bfqq->new_bfqq != NULL)
+			bfqq = bfq_merge_bfqqs(bfqd, bic, bfqq);
 	}
 
 	bfqq->allocated[rw]++;
@@ -3851,6 +3977,7 @@ static int bfq_init_queue(struct request_queue *q, struct elevator_type *e)
 
 	bfqd->bfq_max_budget = bfq_default_max_budget;
 
+	bfqd->bfq_quantum = bfq_quantum;
 	bfqd->bfq_fifo_expire[0] = bfq_fifo_expire[0];
 	bfqd->bfq_fifo_expire[1] = bfq_fifo_expire[1];
 	bfqd->bfq_back_max = bfq_back_max;
@@ -3984,6 +4111,7 @@ static ssize_t __FUNC(struct elevator_queue *e, char *page)		\
 		__data = jiffies_to_msecs(__data);			\
 	return bfq_var_show(__data, (page));				\
 }
+SHOW_FUNCTION(bfq_quantum_show, bfqd->bfq_quantum, 0);
 SHOW_FUNCTION(bfq_fifo_expire_sync_show, bfqd->bfq_fifo_expire[1], 1);
 SHOW_FUNCTION(bfq_fifo_expire_async_show, bfqd->bfq_fifo_expire[0], 1);
 SHOW_FUNCTION(bfq_back_seek_max_show, bfqd->bfq_back_max, 0);
@@ -4020,6 +4148,7 @@ __FUNC(struct elevator_queue *e, const char *page, size_t count)	\
 		*(__PTR) = __data;					\
 	return ret;							\
 }
+STORE_FUNCTION(bfq_quantum_store, &bfqd->bfq_quantum, 1, INT_MAX, 0);
 STORE_FUNCTION(bfq_fifo_expire_sync_store, &bfqd->bfq_fifo_expire[1], 1,
 		INT_MAX, 1);
 STORE_FUNCTION(bfq_fifo_expire_async_store, &bfqd->bfq_fifo_expire[0], 1,
@@ -4120,6 +4249,7 @@ static ssize_t bfq_low_latency_store(struct elevator_queue *e,
 	__ATTR(name, S_IRUGO|S_IWUSR, bfq_##name##_show, bfq_##name##_store)
 
 static struct elv_fs_entry bfq_attrs[] = {
+	BFQ_ATTR(quantum),
 	BFQ_ATTR(fifo_expire_sync),
 	BFQ_ATTR(fifo_expire_async),
 	BFQ_ATTR(back_seek_max),
