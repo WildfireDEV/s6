@@ -419,6 +419,7 @@ enum bfq_device_speed {
  * @group_list: list of all the bfq_groups active on the device.
  * @active_list: list of all the bfq_queues active on the device.
  * @idle_list: list of all the bfq_queues idle on the device.
+ * @bfq_quantum: max number of requests dispatched per dispatch round.
  * @bfq_fifo_expire: timeout for async/sync requests; when it expires
  *                   requests are served in fifo order.
  * @bfq_back_penalty: weight of backward seeks wrt forward ones.
@@ -526,6 +527,7 @@ struct bfq_data {
 	struct list_head active_list;
 	struct list_head idle_list;
 
+	unsigned int bfq_quantum;
 	unsigned int bfq_fifo_expire[2];
 	unsigned int bfq_back_penalty;
 	unsigned int bfq_back_max;
@@ -568,6 +570,7 @@ enum bfqq_state_flags {
 	BFQ_BFQQ_FLAG_must_alloc,	/* must be allowed rq alloc */
 	BFQ_BFQQ_FLAG_fifo_expire,	/* FIFO checked in this slice */
 	BFQ_BFQQ_FLAG_idle_window,	/* slice idling enabled */
+	BFQ_BFQQ_FLAG_prio_changed,	/* task priority has changed */
 	BFQ_BFQQ_FLAG_sync,		/* synchronous queue */
 	BFQ_BFQQ_FLAG_budget_new,	/* no completion with this budget */
 	BFQ_BFQQ_FLAG_IO_bound,		/*
@@ -611,6 +614,7 @@ BFQ_BFQQ_FNS(wait_request);
 BFQ_BFQQ_FNS(must_alloc);
 BFQ_BFQQ_FNS(fifo_expire);
 BFQ_BFQQ_FNS(idle_window);
+BFQ_BFQQ_FNS(prio_changed);
 BFQ_BFQQ_FNS(sync);
 BFQ_BFQQ_FNS(budget_new);
 BFQ_BFQQ_FNS(IO_bound);
