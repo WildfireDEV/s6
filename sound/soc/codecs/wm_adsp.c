@@ -1565,21 +1565,54 @@ static void *wm_adsp_read_algs(struct wm_adsp *dsp, size_t n_algs,
 		return ERR_PTR(-EINVAL);
 	}
 
+<<<<<<< HEAD
 	/* Read the terminator first to validate the length */
 	ret = regmap_raw_read(dsp->regmap, pos + len, &val, sizeof(val));
 	if (ret != 0) {
 		adsp_err(dsp, "Failed to read algorithm list end: %d\n",
 			ret);
 		return ERR_PTR(ret);
+=======
+	switch (region->type) {
+	case WMFW_ADSP1_PM:
+		region_name = "PM";
+		break;
+	case WMFW_ADSP1_DM:
+		region_name = "DM";
+		break;
+	case WMFW_ADSP2_XM:
+		region_name = "XM";
+		break;
+	case WMFW_ADSP2_YM:
+		region_name = "YM";
+		break;
+	case WMFW_ADSP1_ZM:
+		region_name = "ZM";
+		break;
+	default:
+		ret = -EINVAL;
+		goto err_name;
+>>>>>>> 9dbce04... ASoC: wm_adsp: memory leak in wm_adsp_create_control()
 	}
 
 	if (be32_to_cpu(val) != 0xbedead)
 		adsp_warn(dsp, "Algorithm list end %x 0x%x != 0xbeadead\n",
 			  pos + len, be32_to_cpu(val));
 
+<<<<<<< HEAD
 	alg = kzalloc(len * 2, GFP_KERNEL | GFP_DMA);
 	if (!alg)
 		return ERR_PTR(-ENOMEM);
+=======
+	list_for_each_entry(ctl, &dsp->wm_coeff->ctl_list,
+			    list) {
+		if (!strcmp(ctl->name, name)) {
+			if (!ctl->enabled)
+				ctl->enabled = 1;
+			goto found;
+		}
+	}
+>>>>>>> 9dbce04... ASoC: wm_adsp: memory leak in wm_adsp_create_control()
 
 	ret = regmap_raw_read(dsp->regmap, pos, alg, len * 2);
 	if (ret != 0) {
@@ -1602,9 +1635,14 @@ static struct wm_adsp_alg_region *wm_adsp_create_region(struct wm_adsp *dsp,
 	if (!alg_region)
 		return ERR_PTR(-ENOMEM);
 
+<<<<<<< HEAD
 	alg_region->type = type;
 	alg_region->alg = be32_to_cpu(id);
 	alg_region->base = be32_to_cpu(base);
+=======
+found:
+	kfree(name);
+>>>>>>> 9dbce04... ASoC: wm_adsp: memory leak in wm_adsp_create_control()
 
 	list_add_tail(&alg_region->list, &dsp->alg_regions);
 
