@@ -275,7 +275,8 @@ struct xenvif *xenvif_alloc(struct device *parent, domid_t domid,
 	vif->credit_bytes = vif->remaining_credit = ~0UL;
 	vif->credit_usec  = 0UL;
 	init_timer(&vif->credit_timeout);
-	vif->credit_window_start = get_jiffies_64();
+	/* Initialize 'expires' now: it's used to track the credit window. */
+	vif->credit_timeout.expires = jiffies;
 
 	dev->netdev_ops	= &xenvif_netdev_ops;
 	dev->hw_features = NETIF_F_SG | NETIF_F_IP_CSUM | NETIF_F_TSO;
@@ -303,9 +304,6 @@ struct xenvif *xenvif_alloc(struct device *parent, domid_t domid,
 	}
 
 	netdev_dbg(dev, "Successfully created xenvif\n");
-
-	__module_get(THIS_MODULE);
-
 	return vif;
 }
 
@@ -317,6 +315,8 @@ int xenvif_connect(struct xenvif *vif, unsigned long tx_ring_ref,
 	/* Already connected through? */
 	if (vif->irq)
 		return 0;
+
+	__module_get(THIS_MODULE);
 
 	err = xen_netbk_map_frontend_rings(vif, tx_ring_ref, rx_ring_ref);
 	if (err < 0)
@@ -345,6 +345,7 @@ int xenvif_connect(struct xenvif *vif, unsigned long tx_ring_ref,
 err_unmap:
 	xen_netbk_unmap_frontend_rings(vif);
 err:
+	module_put(THIS_MODULE);
 	return err;
 }
 
@@ -362,25 +363,32 @@ void xenvif_carrier_off(struct xenvif *vif)
 
 void xenvif_disconnect(struct xenvif *vif)
 {
+	/* Disconnect funtion might get called by generic framework
+	 * even before vif connects, so we need to check if we really
+	 * need to do a module_put.
+	 */
+	int need_module_put = 0;
+
 	if (netif_carrier_ok(vif->dev))
 		xenvif_carrier_off(vif);
 
-	if (vif->irq) {
-		unbind_from_irqhandler(vif->irq, vif);
-		vif->irq = 0;
-	}
-
-	xen_netbk_unmap_frontend_rings(vif);
-}
-
-void xenvif_free(struct xenvif *vif)
-{
 	atomic_dec(&vif->refcnt);
 	wait_event(vif->waiting_to_free, atomic_read(&vif->refcnt) == 0);
 
+	if (vif->irq) {
+		unbind_from_irqhandler(vif->irq, vif);
+		/* vif->irq is valid, we had a module_get in
+		 * xenvif_connect.
+		 */
+		need_module_put = 1;
+	}
+
 	unregister_netdev(vif->dev);
+
+	xen_netbk_unmap_frontend_rings(vif);
 
 	free_netdev(vif->dev);
 
-	module_put(THIS_MODULE);
+	if (need_module_put)
+		module_put(THIS_MODULE);
 }
