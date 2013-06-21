@@ -392,6 +392,7 @@ KBUILD_CFLAGS   := -Werror -Wall -Wundef -Wstrict-prototypes -Wno-trigraphs \
 		   -Wno-error=implicit-function-declaration \
 		   -Wno-error=tautological-compare \
 		   -Wno-error=int-conversion \
+		   -Wno-error=int-to-pointer-cast \
 		   -fno-delete-null-pointer-checks \
 		   -fdiagnostics-show-option \
 		   -std=gnu89
