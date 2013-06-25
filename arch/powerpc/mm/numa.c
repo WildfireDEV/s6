@@ -1466,6 +1466,7 @@ static int update_cpu_topology(void *data)
 		unmap_cpu_from_node(update->cpu);
 		map_cpu_to_node(update->cpu, update->new_nid);
 		vdso_getcpu_init();
+<<<<<<< HEAD
 	}
 
 	return 0;
@@ -1493,6 +1494,8 @@ static int update_lookup_table(void *data)
 		for (j = 0; j < threads_per_core; j++) {
 			update_numa_cpu_lookup_table(base + j, nid);
 		}
+=======
+>>>>>>> dd02321... powerpc/numa: Do not update sysfs cpu registration from invalid context
 	}
 
 	return 0;
