@@ -82,33 +82,51 @@ def build_threads():
 
 failed_targets = []
 
+<<<<<<< HEAD
 BuildResult = namedtuple('BuildResult', ['status', 'messages'])
 
+=======
+>>>>>>> 467a305... scripts: Refactor build-all.py's build
 class BuildSequence(namedtuple('BuildSequence', ['log_name', 'short_name', 'steps'])):
 
     def set_width(self, width):
         self.width = width
 
     def __enter__(self):
+<<<<<<< HEAD
+=======
+        print "Building:", self.short_name
+>>>>>>> 467a305... scripts: Refactor build-all.py's build
         self.log = open(self.log_name, 'w')
     def __exit__(self, type, value, traceback):
         self.log.close()
 
     def run(self):
         self.status = None
+<<<<<<< HEAD
         messages = ["Building: " + self.short_name]
         def printer(line):
             text = "[%-*s] %s" % (self.width, self.short_name, line)
             messages.append(text)
+=======
+        def printer(line):
+            text = "[%-*s] %s" % (self.width, self.short_name, line)
+            print text
+>>>>>>> 467a305... scripts: Refactor build-all.py's build
             self.log.write(text)
             self.log.write('\n')
         for step in self.steps:
             st = step.run(printer)
             if st:
+<<<<<<< HEAD
                 self.status = BuildResult(self.short_name, messages)
                 break
         if not self.status:
             self.status = BuildResult(None, messages)
+=======
+                self.status = st
+                break
+>>>>>>> 467a305... scripts: Refactor build-all.py's build
 
 class BuildTracker:
     """Manages all of the steps necessary to perform a build.  The
@@ -118,7 +136,10 @@ class BuildTracker:
 
     def __init__(self):
         self.sequence = []
+<<<<<<< HEAD
         self.lock = threading.Lock()
+=======
+>>>>>>> 467a305... scripts: Refactor build-all.py's build
 
     def add_sequence(self, log_name, short_name, steps):
         self.sequence.append(BuildSequence(log_name, short_name, steps))
@@ -132,6 +153,7 @@ class BuildTracker:
     def __repr__(self):
         return "BuildTracker(%s)" % self.sequence
 
+<<<<<<< HEAD
     def run_child(self, seq):
         seq.set_width(self.longest)
         tok = self.build_tokens.get()
@@ -167,6 +189,17 @@ class BuildTracker:
                 errors.append(stats.status)
         for child in children:
             child.join()
+=======
+    def run(self):
+        longest = self.longest_name()
+        errors = []
+        for seq in self.sequence:
+            seq.set_width(longest)
+            with seq:
+                seq.run()
+                if seq.status:
+                    errors.append(seq.short_name)
+>>>>>>> 467a305... scripts: Refactor build-all.py's build
         if errors:
             fail("\n  ".join(["Failed targets:"] + errors))
 
@@ -213,6 +246,10 @@ class ExecStep:
         outp("exec: %s" % (" ".join(self.cmd),))
         with open('/dev/null', 'r') as devnull:
             proc = subprocess.Popen(self.cmd, stdin=devnull,
+<<<<<<< HEAD
+=======
+                    bufsize=0,
+>>>>>>> 467a305... scripts: Refactor build-all.py's build
                     stdout=subprocess.PIPE,
                     stderr=subprocess.STDOUT,
                     **self.kwargs)
@@ -326,6 +363,7 @@ def scan_configs():
 
 def build_many(targets):
     print "Building %d target(s)" % len(targets)
+<<<<<<< HEAD
 
     # If we are requesting multiple builds, divide down the job number
     # to construct the make_command, giving it a floor of 2, so there
@@ -334,6 +372,8 @@ def build_many(targets):
         j = max(all_options.jobs / len(targets), 2)
         make_command.append("-j" + str(j))
 
+=======
+>>>>>>> 467a305... scripts: Refactor build-all.py's build
     tracker = BuildTracker()
     for target in targets:
         if all_options.updateconfigs:
