@@ -180,14 +180,19 @@ void dbs_check_cpu(struct dbs_data *dbs_data, int cpu)
 		 * - during long idle intervals
 		 * - explicitly set to zero
 		 */
-		if (unlikely(wall_time > (2 * sampling_rate)) &&
-						j_cdbs->copy_prev_load) {
+		if (unlikely(wall_time > (2 * sampling_rate) &&
+			     j_cdbs->prev_load)) {
 			load = j_cdbs->prev_load;
-			j_cdbs->copy_prev_load = false;
+
+			/*
+			 * Perform a destructive copy, to ensure that we copy
+			 * the previous load only once, upon the first wake-up
+			 * from idle.
+			 */
+			j_cdbs->prev_load = 0;
 		} else {
 			load = 100 * (wall_time - idle_time) / wall_time;
 			j_cdbs->prev_load = load;
-			j_cdbs->copy_prev_load = true;
 		}
 
 		if (load > max_load)
@@ -406,7 +411,6 @@ int cpufreq_governor_dbs(struct cpufreq_policy *policy,
 				(j_cdbs->prev_cpu_wall - j_cdbs->prev_cpu_idle);
 			j_cdbs->prev_load = 100 * prev_load /
 					(unsigned int) j_cdbs->prev_cpu_wall;
-			j_cdbs->copy_prev_load = true;
 
 			if (ignore_nice)
 				j_cdbs->prev_cpu_nice =
