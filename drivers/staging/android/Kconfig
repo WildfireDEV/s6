@@ -46,15 +46,23 @@ config ANDROID_LOGGER
 	  This adds support for system-wide logging using four log buffers.
 
 	  These are:
-
 	      1: main
 	      2: events
 	      3: radio
 	      4: system
 
-	  Log reading and writing is performed via normal Linux reads and
-	  optimized writes. This optimization avoids logging having too
-	  much overhead in the system.
+config PERSISTENT_TRACER
+	bool "Persistent function tracer"
+	depends on HAVE_FUNCTION_TRACER
+	select FUNCTION_TRACER
+	select ANDROID_PERSISTENT_RAM
+	default n
+	help
+	  persistent_trace traces function calls into a persistent ram
+	  buffer that can be decoded and dumped after reboot through
+	  /sys/kernel/debug/persistent_trace.  It can be used to
+	  determine what function was last called before a reset or
+	  panic.
 
 config ANDROID_TIMED_OUTPUT
 	bool "Timed output class driver"
