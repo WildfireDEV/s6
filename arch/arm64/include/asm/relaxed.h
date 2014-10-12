@@ -30,4 +30,5 @@
 #endif
 
 #include <asm-generic/relaxed.h>
+
 #endif /*_ASM_RELAXED_H_*/

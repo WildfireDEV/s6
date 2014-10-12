@@ -39,71 +39,7 @@
  */
 #define atomic_read(v)	(*(volatile int *)&(v)->counter)
 #define atomic_set(v,i)	(((v)->counter) = (i))
-#define cpu_relaxed_read_atomic(v)	ldax32((volatile int *)&(v->counter))
-
-/*
- * Macros for generating inline functions to use special load and store
- * instructions (exlusive and  aquire/release).
- */
-
-#define _LD(_name, _type, _inst, _reg)					       \
-static inline _type _name (volatile _type *p)				       \
-{									       \
-	_type ret;							       \
-	asm volatile(							       \
-		_inst " %" _reg "0, %1": "=&r" (ret) : "Q" (*p) : "memory");   \
-	return ret;							       \
-}
-
-#define _STX(_name, _type, _inst, _reg)					       \
-static inline int _name (volatile _type *p, _type v)			       \
-{									       \
-	int ret;							       \
-	asm volatile(							       \
-		 _inst " %" _reg "0, %" _reg "1, %2"			       \
-		: "=&r" (ret)						       \
-		: "r" (v), "Q" (*p)					       \
-		: "memory");						       \
-	return ret;							       \
-}
-
-#define _STL(_name, _type, _inst, _reg)					       \
-static inline void _name (volatile _type *p, _type v)			       \
-{									       \
-	asm volatile(							       \
-		 _inst " %" _reg "0, %1"				       \
-		:							       \
-		: "r" (v), "Q" (*p)					       \
-		: "memory");						       \
-}
-
-_LD(  ldx64, u64,   "ldxr", "x")
-_STX( stx64, u64,   "stxr", "x")
-_LD( ldax64, u64,  "ldaxr", "x")
-_STX(stlx64, u64,  "stlxr", "x")
-_LD(  lda64, u64,   "ldar", "x")
-_STL( stl64, u64,   "stlr", "x")
-
-_LD(  ldx32, u32,   "ldxr", "w")
-_STX( stx32, u32,   "stxr", "w")
-_LD( ldax32, u32,  "ldaxr", "w")
-_STX(stlx32, u32,  "stlxr", "w")
-_LD(  lda32, u32,   "ldar", "w")
-_STL( stl32, u32,   "stlr", "w")
-
-_LD(  ldx16, u16,  "ldxrh", "w")
-_STX( stx16, u16,  "stxrh", "w")
-_LD( ldax16, u16, "ldaxrh", "w")
-_STX(stlx16, u16, "stlxrh", "w")
-_LD(  lda16, u16,  "ldarh", "w")
-_STL( stl16, u16,  "stlrh", "w")
-
-_LD(   ldx8,  u8,  "ldxrb", "w")
-_STX(  stx8,  u8,  "stxrb", "w")
-_LD(  ldax8,  u8, "ldaxrb", "w")
-_STX( stlx8,  u8, "stlxrb", "w")
-_LD(   lda8,  u8,  "ldarb", "w")
-_STL(  stl8,  u8,  "stlrb", "w")
+#define cpu_relaxed_read_atomic(v) atomic_read(v)
 
 /*
  * AArch64 UP and SMP safe atomic ops.  We use load exclusive and
@@ -254,6 +190,11 @@ static inline int __atomic_add_unless(atomic_t *v, int a, int u)
 #define atomic_sub_and_test(i, v) (atomic_sub_return(i, v) == 0)
 
 #define atomic_add_negative(i,v) (atomic_add_return(i, v) < 0)
+
+#define smp_mb__before_atomic_dec()	smp_mb()
+#define smp_mb__after_atomic_dec()	smp_mb()
+#define smp_mb__before_atomic_inc()	smp_mb()
+#define smp_mb__after_atomic_inc()	smp_mb()
 
 /*
  * 64-bit atomic operations.
