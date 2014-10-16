@@ -20,10 +20,6 @@ source "drivers/block/Kconfig"
 
 source "drivers/misc/Kconfig"
 
-source "drivers/staging/samsung/sec_notifier/Kconfig"
-
-source "drivers/muic/Kconfig"
-
 source "drivers/ide/Kconfig"
 
 source "drivers/scsi/Kconfig"
@@ -54,7 +50,11 @@ source "drivers/char/Kconfig"
 
 source "drivers/i2c/Kconfig"
 
+source "drivers/slimbus/Kconfig"
+
 source "drivers/spi/Kconfig"
+
+source "drivers/spmi/Kconfig"
 
 source "drivers/ssbi/Kconfig"
 
@@ -115,7 +115,6 @@ source "drivers/edac/Kconfig"
 source "drivers/rtc/Kconfig"
 
 source "drivers/esoc/Kconfig"
-source "drivers/mhi/Kconfig"
 
 source "drivers/dma/Kconfig"
 
@@ -157,8 +156,6 @@ source "drivers/rpmsg/Kconfig"
 
 source "drivers/devfreq/Kconfig"
 
-source "drivers/motor/Kconfig"
-
 source "drivers/extcon/Kconfig"
 
 source "drivers/memory/Kconfig"
@@ -175,31 +172,22 @@ source "drivers/irqchip/Kconfig"
 
 source "drivers/ipack/Kconfig"
 
-source "drivers/battery/Kconfig"
+source "drivers/gud/Kconfig"
 
 source "drivers/reset/Kconfig"
 
-source "drivers/sensorhub/stm/Kconfig"
+source "drivers/android/Kconfig"
 
-source "drivers/sensorhub/atmel/Kconfig"
+source "drivers/coresight/Kconfig"
 
-source "drivers/sensorhub/brcm/Kconfig"
+source "drivers/bif/Kconfig"
 
 source "drivers/sensors/Kconfig"
 
-source "drivers/gps/Kconfig"
-
-source "drivers/fingerprint/Kconfig"
-
-source "drivers/gud/Kconfig"
-
-source "drivers/gator/Kconfig"
-
-source "drivers/trace/Kconfig"
-
-source "drivers/bts/Kconfig"
-
-source "drivers/ledmatrix/Kconfig"
+source "drivers/phy/Kconfig"
 
 source "drivers/soc/Kconfig"
+
+source "drivers/firmware/Kconfig"
+
 endmenu
