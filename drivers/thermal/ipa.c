@@ -359,20 +359,12 @@ static int get_cpu_freq_limit(cluster_type cl, int power_out, int util)
 static void release_power_caps(void)
 {
 	int cl_idx;
-	struct ipa_config *config = &arbiter_data.config;
 
 	/* TODO get rid of PUNCONSTRAINED and replace with config->aX_power_max*/
 	for (cl_idx = 0; cl_idx < NUM_CLUSTERS; cl_idx++) {
 		int freq = get_cpu_freq_limit(cl_idx, PUNCONSTRAINED, 1);
 
 		arbiter_set_cpu_freq_limit(freq, cl_idx);
-	}
-
-	if (config->cores_out) {
-		if (ipa_hotplug(false))
-			pr_err("%s: failed ipa hotplug in\n", __func__);
-		else
-			config->cores_out = 0;
 	}
 
 	arbiter_data.gpu_freq_limit = 0;
@@ -1050,8 +1042,6 @@ static void setup_sysfs(struct arbiter_data *arb)
 	}
 }
 
-static struct cpu_cluster_efficiency *c_eff = NULL;
-
 static void ipa_setup_power_tables(void)
 {
 	struct cpu_power_info t;
@@ -1059,42 +1049,18 @@ static void ipa_setup_power_tables(void)
 
 	t.load[0] = 100; t.load[1] = t.load[2] = t.load[3] = 0;
 	t.cluster = CL_ZERO;
-	
-	if (c_eff == NULL) {
-		c_eff = kzalloc(sizeof(struct cpu_cluster_efficiency) * (CL_ONE + 1), GFP_KERNEL);
-	
-		c_eff[CL_ZERO].arch_efficiency = 100;
-		c_eff[CL_ZERO].n_p_states = nr_little_coeffs;
-		c_eff[CL_ZERO].p_states = kzalloc(sizeof(struct cpu_p_state) * nr_little_coeffs, GFP_KERNEL);
-		
-		c_eff[CL_ONE].arch_efficiency = 208;
-		c_eff[CL_ONE].n_p_states = nr_big_coeffs;
-		c_eff[CL_ONE].p_states = kzalloc(sizeof(struct cpu_p_state) * nr_big_coeffs, GFP_KERNEL);
-	}
-	
 	for (i = 0; i < nr_little_coeffs; i++) {
-		c_eff[CL_ZERO].p_states[i].freq = t.freq = MHZ_TO_KHZ(little_cpu_coeffs[i].frequency);
-		c_eff[CL_ZERO].p_states[i].power = little_cpu_coeffs[i].power = get_power_value(&t);
-		c_eff[CL_ZERO].p_states[i].capacity = (t.freq / 1000) * c_eff[CL_ZERO].arch_efficiency;
-		c_eff[CL_ZERO].p_states[i].efficiency = 
-			((c_eff[CL_ZERO].p_states[i].freq / 1000) * c_eff[CL_ZERO].arch_efficiency)
-			/ c_eff[CL_ZERO].p_states[i].power;
+		t.freq = MHZ_TO_KHZ(little_cpu_coeffs[i].frequency);
+		little_cpu_coeffs[i].power = get_power_value(&t);
 		pr_info("cluster: %d freq: %d power=%d\n", CL_ZERO, t.freq, little_cpu_coeffs[i].power);
 	}
-	
+
 	t.cluster = CL_ONE;
 	for (i = 0; i < nr_big_coeffs; i++) {
-		c_eff[CL_ONE].p_states[i].freq = t.freq = MHZ_TO_KHZ(big_cpu_coeffs[i].frequency);
-		c_eff[CL_ONE].p_states[i].power = big_cpu_coeffs[i].power = get_power_value(&t);
-		c_eff[CL_ONE].p_states[i].capacity = (t.freq / 1000) * c_eff[CL_ONE].arch_efficiency;
-		c_eff[CL_ONE].p_states[i].efficiency = 
-			((c_eff[CL_ONE].p_states[i].freq / 1000) * c_eff[CL_ONE].arch_efficiency)
-			/ c_eff[CL_ONE].p_states[i].power;
+		t.freq = MHZ_TO_KHZ(big_cpu_coeffs[i].frequency);
+		big_cpu_coeffs[i].power = get_power_value(&t);
 		pr_info("cluster: %d freq: %d power=%d\n", CL_ONE, t.freq, big_cpu_coeffs[i].power);
 	}
-	
-	sched_update_cpu_efficiency_table(&c_eff[CL_ZERO], CL_ZERO);
-	sched_update_cpu_efficiency_table(&c_eff[CL_ONE], CL_ONE);
 }
 
 static int setup_cpufreq_tables(int cl_idx)
@@ -1516,11 +1482,21 @@ void ipa_update(void)
 
 static void arbiter_init(struct work_struct *work)
 {
+	int i;
+
 	if (!exynos_cpufreq_init_done) {
 		pr_info("exynos_cpufreq not initialized. Deferring again...\n");
 		queue_delayed_work(system_freezable_wq, &init_work,
 				msecs_to_jiffies(500));
 		return;
+	}
+
+	arbiter_data.gpu_freq_limit = get_ipa_dvfs_max_freq();
+	arbiter_data.cpu_freq_limits[CL_ONE] = get_real_max_freq(CL_ONE);
+	arbiter_data.cpu_freq_limits[CL_ZERO] = get_real_max_freq(CL_ZERO);
+	for (i = 0; i < NR_CPUS; i++) {
+		arbiter_data.cpu_freqs[CL_ONE][i] = get_real_max_freq(CL_ONE);
+		arbiter_data.cpu_freqs[CL_ZERO][i] = get_real_max_freq(CL_ZERO);
 	}
 
 	setup_cpusmasks(arbiter_data.cl_stats);
@@ -1531,6 +1507,7 @@ static void arbiter_init(struct work_struct *work)
 
 	nr_little_coeffs = setup_cpufreq_tables(CL_ZERO);
 	nr_big_coeffs = setup_cpufreq_tables(CL_ONE);
+	setup_power_tables();
 
 	ipa_setup_power_tables();
 	ipa_setup_max_limits();
