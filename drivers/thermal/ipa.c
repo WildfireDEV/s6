@@ -1073,23 +1073,15 @@ static void ipa_setup_power_tables(void)
 	}
 	
 	for (i = 0; i < nr_little_coeffs; i++) {
-		c_eff[CL_ZERO].p_states[i].freq = t.freq = MHZ_TO_KHZ(little_cpu_coeffs[i].frequency);
-		c_eff[CL_ZERO].p_states[i].power = little_cpu_coeffs[i].power = get_power_value(&t);
-		c_eff[CL_ZERO].p_states[i].capacity = (t.freq / 1000) * c_eff[CL_ZERO].arch_efficiency;
-		c_eff[CL_ZERO].p_states[i].efficiency = 
-			((c_eff[CL_ZERO].p_states[i].freq / 1000) * c_eff[CL_ZERO].arch_efficiency)
-			/ c_eff[CL_ZERO].p_states[i].power;
+		t.freq = MHZ_TO_KHZ(little_cpu_coeffs[i].frequency);
+		little_cpu_coeffs[i].power = get_power_value(&t);
 		pr_info("cluster: %d freq: %d power=%d\n", CL_ZERO, t.freq, little_cpu_coeffs[i].power);
 	}
-	
+
 	t.cluster = CL_ONE;
 	for (i = 0; i < nr_big_coeffs; i++) {
-		c_eff[CL_ONE].p_states[i].freq = t.freq = MHZ_TO_KHZ(big_cpu_coeffs[i].frequency);
-		c_eff[CL_ONE].p_states[i].power = big_cpu_coeffs[i].power = get_power_value(&t);
-		c_eff[CL_ONE].p_states[i].capacity = (t.freq / 1000) * c_eff[CL_ONE].arch_efficiency;
-		c_eff[CL_ONE].p_states[i].efficiency = 
-			((c_eff[CL_ONE].p_states[i].freq / 1000) * c_eff[CL_ONE].arch_efficiency)
-			/ c_eff[CL_ONE].p_states[i].power;
+		t.freq = MHZ_TO_KHZ(big_cpu_coeffs[i].frequency);
+		big_cpu_coeffs[i].power = get_power_value(&t);
 		pr_info("cluster: %d freq: %d power=%d\n", CL_ONE, t.freq, big_cpu_coeffs[i].power);
 	}
 	
@@ -1516,11 +1508,21 @@ void ipa_update(void)
 
 static void arbiter_init(struct work_struct *work)
 {
+	int i;
+
 	if (!exynos_cpufreq_init_done) {
 		pr_info("exynos_cpufreq not initialized. Deferring again...\n");
 		queue_delayed_work(system_freezable_wq, &init_work,
 				msecs_to_jiffies(500));
 		return;
+	}
+
+	arbiter_data.gpu_freq_limit = get_ipa_dvfs_max_freq();
+	arbiter_data.cpu_freq_limits[CL_ONE] = get_real_max_freq(CL_ONE);
+	arbiter_data.cpu_freq_limits[CL_ZERO] = get_real_max_freq(CL_ZERO);
+	for (i = 0; i < NR_CPUS; i++) {
+		arbiter_data.cpu_freqs[CL_ONE][i] = get_real_max_freq(CL_ONE);
+		arbiter_data.cpu_freqs[CL_ZERO][i] = get_real_max_freq(CL_ZERO);
 	}
 
 	setup_cpusmasks(arbiter_data.cl_stats);
@@ -1531,6 +1533,7 @@ static void arbiter_init(struct work_struct *work)
 
 	nr_little_coeffs = setup_cpufreq_tables(CL_ZERO);
 	nr_big_coeffs = setup_cpufreq_tables(CL_ONE);
+	setup_power_tables();
 
 	ipa_setup_power_tables();
 	ipa_setup_max_limits();
