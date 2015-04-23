@@ -74,6 +74,7 @@ struct idletimer_tg {
 	bool work_pending;
 	bool send_nl_msg;
 	bool active;
+	bool suspend_time_valid;
 	uid_t uid;
 };
 
@@ -163,8 +164,9 @@ static void notify_netlink_uevent(const char *iface, struct idletimer_tg *timer)
 	pr_debug("putting nlmsg: <%s> <%s> <%s> <%s>\n", iface_msg, state_msg,
 		 timestamp_msg, uid_msg);
 	kobject_uevent_env(idletimer_tg_kobj, KOBJ_CHANGE, envp);
-
 	return;
+
+
 }
 
 static
@@ -243,8 +245,13 @@ static int idletimer_resume(struct notifier_block *notifier,
 	switch (pm_event) {
 	case PM_SUSPEND_PREPARE:
 		get_monotonic_boottime(&timer->last_suspend_time);
+		timer->suspend_time_valid = true;
 		break;
 	case PM_POST_SUSPEND:
+		if (!timer->suspend_time_valid)
+			break;
+		timer->suspend_time_valid = false;
+
 		spin_lock_bh(&timestamp_lock);
 		if (!timer->active) {
 			spin_unlock_bh(&timestamp_lock);
@@ -279,7 +286,7 @@ static int idletimer_tg_create(struct idletimer_tg_info *info)
 {
 	int ret;
 
-	info->timer = kmalloc(sizeof(*info->timer), GFP_KERNEL);
+	info->timer = kzalloc(sizeof(*info->timer), GFP_KERNEL);
 	if (!info->timer) {
 		ret = -ENOMEM;
 		goto out;
