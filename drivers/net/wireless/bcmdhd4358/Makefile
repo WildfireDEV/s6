@@ -53,9 +53,6 @@ ifeq ($(BUS_IFACE_PCIE),y)
 #endif
 	# Enable packet audit at host side
 	DHDCFLAGS += -DDHD_PKTID_AUDIT_ENABLED
-	# Extended HANG event with reason codes
-	DHDCFALGS += -DDHD_USE_EXTENDED_HANG_REASON
-
 endif
 
 
@@ -70,12 +67,8 @@ DHDCFLAGS += -DWL_CFG80211
 # Debug
 DHDCFLAGS += -DSIMPLE_MAC_PRINT
 DHDCFLAGS += -DDEBUGFS_CFG80211
-# Enable wakelock debug function
-DHDCFLAGS += -DDHD_TRACE_WAKE_LOCK
 # Print out kernel panic point of file and line info when assertion happened
 DHDCFLAGS += -DBCMASSERT_LOG
-# Collect Current Assoc/Reject Status for Big Data logging
-DHDCFLAGS += -DDHD_ENABLE_BIGDATA_LOGGING
 
 # Print 8021X
 DHDCFLAGS += -DDHD_8021X_DUMP
@@ -101,13 +94,6 @@ DHDCFLAGS += -DCUSTOM_TDLS_RSSI_THRESHOLD_LOW=-85
 DHDCFLAGS += -DROAM_AP_ENV_DETECTION
 DHDCFLAGS += -DROAM_ENABLE -DROAM_CHANNEL_CACHE -DROAM_API
 DHDCFLAGS += -DENABLE_FW_ROAM_SUSPEND
-DHDCFLAGS += -DDHD_LOSSLESS_ROAMING
-
-# Enable Roam time thresh
-# DHDCFLAGS += -DENABLE_MAX_DTIM_IN_SUSPEND
-DHDCFLAGS += -DCUSTOM_BCN_TIMEOUT_IN_SUSPEND=10
-DHDCFLAGS += -DCUSTOM_ROAM_TIME_THRESH_IN_SUSPEND=6000
-DHDCFLAGS += -DMAX_DTIM_ALLOWED_INTERVAL=925
 
 # CCX
 ifeq ($(CONFIG_BRCM_CCX),y)
@@ -123,14 +109,14 @@ DHDCFLAGS += -DDISABLE_11H_SOFTAP
 DHDCFLAGS += -DSUPPORT_PM2_ONLY
 DHDCFLAGS += -DSUPPORT_DEEP_SLEEP
 DHDCFLAGS += -DSUPPORT_AMPDU_MPDU_CMD
+DHDCFLAGS += -DBLOCK_IPV6_PACKET -DPASS_IPV4_SUSPEND
 DHDCFLAGS += -DSOFTAP_SEND_HANGEVT
-DHDCFLAGS += -DTDLS_MSG_ONLY_WFD
-DHDCFLAGS += -DSKIP_WLFC_ON_CONCURRENT
-DHDCFLAGS += -DCUSTOM_EVENT_PM_WAKE=20
-DHDCFLAGS += -DCUSTOM_KEEP_ALIVE_SETTING=30000
 
 # For special PNO Event keep wake lock for 10sec
 DHDCFLAGS += -DCUSTOM_PNO_EVENT_LOCK_xTIME=10
+
+# For Passing all multicast packets to host when not in suspend mode.
+# DHDCFLAGS += -DPASS_ALL_MCAST_PKTS
 
 # Early suspend
 DHDCFLAGS += -DDHD_USE_EARLYSUSPEND
@@ -149,13 +135,16 @@ ifeq ($(CONFIG_BROADCOM_WIFI_RESERVED_MEM),y)
   DHDCFLAGS += -DENHANCED_STATIC_BUF
   DHDCFLAGS += -DSTATIC_WL_PRIV_STRUCT
 ifeq ($(BUS_IFACE_PCIE),y)
-  # Use preallocated IOCTL and EVENT buffer
-  DHDCFLAGS += -DDHD_USE_STATIC_CTRLBUF
+  DHDCFLAGS += -DDHD_USE_STATIC_IOCTLBUF
 endif
-ifeq ($(CONFIG_BCMDHD_PREALLOC_MEMDUMP),y)
-  DHDCFLAGS += -DDHD_USE_STATIC_MEMDUMP
+ifeq ($(CONFIG_BCMDHD_DEBUG_PAGEALLOC),y)
+# Preallocation for memory dump
+  DHDCFLAGS += -DUSE_STATIC_MEMDUMP
 endif
 endif
+
+# DTIM listen interval in suspend mode(0 means follow AP's DTIM period)
+DHDCFLAGS += -DCUSTOM_SUSPEND_BCN_LI_DTIM=3
 
 # Ioctl timeout 5000ms
 DHDCFLAGS += -DIOCTL_RESP_TIMEOUT=5000
@@ -178,17 +167,6 @@ DHDCFLAGS += -DUSE_INITIAL_SHORT_DWELL_TIME
 # Japan ccode revision will be fixed by nvram's value
 DHDCFLAGS += -DKEEP_JP_REGREV
 
-# NAN feature
-ifeq ($(CONFIG_WL_NAN),y)
-DHDCFLAGS += -DWL_NAN
-endif
-
-# FCC power limit control on ch12/13.
-DHDCFLAGS += -DFCC_PWR_LIMIT_2G
-
-# WFA Certification feature
-DHDCFLAGS += -DUSE_WFA_CERT_CONF
-
 ##############################
 # Android Platform Definition
 ##############################
@@ -199,7 +177,7 @@ DHDCFLAGS += -DUSE_WFA_CERT_CONF
 # Definitions are filtered by Kernel version
 DHDCFLAGS += -DWL_ENABLE_P2P_IF
 DHDCFLAGS += -DWL_SUPPORT_BACKPORTED_KPATCHES
-# Default definitions for KitKat, Lollipop
+# Default definitions for KitKat THIS_STRING_WILL_BE_REPLACED_WITH_ANDROID_DEFINITION Lollipop
 DHDCFLAGS += -DWL_CFG80211_STA_EVENT
 DHDCFLAGS += -DWL_IFACE_COMB_NUM_CHANNELS
 # To support p2p private command on kernel 3.8 or above
@@ -218,15 +196,6 @@ DHDCFLAGS += -DWL_VENDOR_EXT_SUPPORT
 
 # Extra file list for Lollipop
 DHD_ANDROID_OFILES := wl_cfgvendor.o dhd_rtt.o
-
-# GN4 platform still disabled Lollipop features
-ifeq ($(filter y,$(CONFIG_MACH_UNIVERSAL5433) $(CONFIG_ARCH_APQ8084)),y)
-DHD_ANDROID_OFILES :=$(filter-out wl_cfgvendor.o dhd_rtt.o,$(DHD_ANDROID_OFILES))
-DHDCFLAGS :=$(filter-out -DLINKSTAT_SUPPORT,$(DHDCFLAGS))
-DHDCFLAGS :=$(filter-out -DGSCAN_SUPPORT,$(DHDCFLAGS))
-DHDCFLAGS :=$(filter-out -DRTT_SUPPORT,$(DHDCFLAGS))
-DHDCFLAGS :=$(filter-out -DWL_VENDOR_EXT_SUPPORT,$(DHDCFLAGS))
-endif
 
 
 
@@ -248,7 +217,7 @@ ifneq ($(CONFIG_BCM4358),)
   DHDCFLAGS += -DUSE_CID_CHECK
   DHDCFLAGS += -DENABLE_BCN_LI_BCN_WAKEUP
   DHDCFLAGS += -DDHD_DONOT_FORWARD_BCMEVENT_AS_NETWORK_PKT
-  DHDCFLAGS += -DCUSTOM_BCN_TIMEOUT=6
+  DHDCFLAGS += -DCUSTOM_BCN_TIMEOUT=4
   DHDCFLAGS += -DSOFTAP_UAPSD_OFF
 # tput enhancement for common
   DHDCFLAGS += -DUSE_WL_TXBF
@@ -284,15 +253,9 @@ ifeq ($(BUS_IFACE_PCIE),y)
   DHDCFLAGS += -DDHDTCPACK_SUPPRESS
 endif
 
-# Disabled DHDTCPACK_SUPPRESS for T Project / Enabled for Zero Project
-ifeq ($(filter y,$(CONFIG_MACH_UNIVERSAL5433) $(CONFIG_ARCH_APQ8084)),y)
-  DHDCFLAGS :=$(filter-out -DDHDTCPACK_SUPPRESS,$(DHDCFLAGS))
-# For enable temperature throttling feature at BCM4358A3
-#  DHDCFLAGS += -DENABLE_TEMP_THROTTLING
-endif
-
 ifeq ($(CONFIG_ARCH_MSM),y)
   DHDCFLAGS += -DSET_RPS_CPUS
+  DHDCFLAGS := $(filter-out -DDHDTCPACK_SUPPRESS,$(DHDCFLAGS))
 endif
 
 # New Features
@@ -303,11 +266,10 @@ endif
   DHDCFLAGS += -DWLTDLS
   DHDCFLAGS += -DWLFBT
   DHDCFLAGS += -DDHD_ENABLE_LPC
-  DHDCFLAGS += -DWLAIBSS -DWLAIBSS_PS
+  DHDCFLAGS += -DWLAIBSS
   DHDCFLAGS += -DSUPPORT_LTECX
   DHDCFLAGS += -DSUPPORT_2G_VHT
   DHDCFLAGS += -DSUPPORT_WL_TXPOWER
-  DHDCFLAGS += -DDHD_LOG_DUMP
 ifeq ($(CONFIG_BCM4358),y)
   DHDCFLAGS += -DENABLE_INSMOD_NO_FW_LOAD
   DHDCFLAGS += -DUSE_LATE_INITCALL_SYNC
@@ -409,7 +371,7 @@ endif
   DHDCFLAGS += -DCUSTOM_MAX_TXGLOM_SIZE=32
 
   # New Features
-  DHDCFLAGS += -DWL11U -DMFP
+  DHDCFLAGS += -DWL11U
   DHDCFLAGS += -DBCMCCX
   DHDCFLAGS += -DWES_SUPPORT
   DHDCFLAGS += -DOKC_SUPPORT
@@ -459,7 +421,7 @@ endif
   DHDCFLAGS += -DCUSTOM_MAX_TXGLOM_SIZE=32
 
   # New Features
-  DHDCFLAGS += -DWL11U -DMFP
+  DHDCFLAGS += -DWL11U
   DHDCFLAGS += -DBCMCCX
   DHDCFLAGS += -DWES_SUPPORT
   DHDCFLAGS += -DOKC_SUPPORT
@@ -630,7 +592,7 @@ DHDOFILES := dhd_pno.o dhd_common.o dhd_ip.o dhd_custom_gpio.o dhd_custom_sec.o 
 	bcmutils.o bcmwifi_channels.o hndpmu.o linux_osl.o sbutils.o siutils.o \
 	wl_android.o wl_cfg80211.o wl_cfgp2p.o wl_cfg_btcoex.o wldev_common.o \
 	wl_linux_mon.o wl_roam.o dhd_linux_platdev.o dhd_linux_wq.o wl_cfg_btcoex.o \
-	hnd_pktq.o hnd_pktpool.o
+	hnd_pktq.o hnd_pktpool.o wl_cfgnan.o bcmxtlv.o
 
 
 ifeq ($(BUS_IFACE_SDIO),y)
@@ -650,11 +612,6 @@ ifeq ($(CONFIG_SPI_SC8810),y)
 DHDOFILES += bcmsdspi_linux.o bcmspibrcm.o
 DHDOFILES :=$(filter-out bcmsdh_sdmmc.o,$(DHDOFILES))
 DHDOFILES :=$(filter-out bcmsdh_sdmmc_linux.o,$(DHDOFILES))
-endif
-
-# NAN feature
-ifeq ($(CONFIG_WL_NAN),y)
-DHDOFILES += wl_cfgnan.o bcmxtlv.o
 endif
 
 dhd-y := $(DHDOFILES)
