@@ -19,20 +19,32 @@
 
 #include "mdnie.h"
 
+#if defined(CONFIG_DECON_LCD_S6E3FA2)
+#include "mdnie_lite_table_k.h"
+#elif defined(CONFIG_DECON_LCD_S6E3HA0)
+#include "mdnie_lite_table_kq.h"
+#elif defined(CONFIG_DECON_LCD_EA8064G)
+#include "mdnie_lite_table_s.h"
+#elif defined(CONFIG_DECON_LCD_S6E3HA2)
+#include "mdnie_lite_table_tr.h"
+#elif defined(CONFIG_DECON_LCD_S6E3HF2)
+#include "mdnie_lite_table_tb.h"
+#elif defined(CONFIG_PANEL_S6E3HF2_DYNAMIC)
+#include "mdnie_lite_table_zero.h"
+#elif defined(CONFIG_PANEL_S6E3HA2_DYNAMIC)
+#include "mdnie_lite_table_zerof.h"
+#endif
+#if defined(CONFIG_TDMB)
+#include "mdnie_lite_table_dmb.h"
+#endif
+
 #define MDNIE_SYSFS_PREFIX		"/sdcard/mdnie/"
+#define PANEL_COORDINATE_PATH	"/sys/class/lcd/panel/color_coordinate"
 
 #define IS_DMB(idx)			(idx == DMB_NORMAL_MODE)
 #define IS_SCENARIO(idx)		((idx < SCENARIO_MAX) && !((idx > VIDEO_NORMAL_MODE) && (idx < CAMERA_MODE)))
 #define IS_ACCESSIBILITY(idx)		(idx && (idx < ACCESSIBILITY_MAX))
-#if defined(CONFIG_PANEL_S6E3HA3_DYNAMIC) || defined(CONFIG_PANEL_S6E3HF3_DYNAMIC)
-#define IS_HBM(idx)			(idx >= AOLCE_MIN_BRIGHTNESS)
-#else
 #define IS_HBM(idx)			(idx >= 6)
-#endif
-
-#define AOLCE_MIN_BRIGHTNESS		9
-#define AOLCE_MAX_BRIGHTNESS		12
-
 #if defined(CONFIG_LCD_HMT)
 #define IS_HMT(idx)			(idx >= HMT_MDNIE_ON && idx < HMT_MDNIE_MAX)
 #endif
@@ -44,15 +56,36 @@
 #define GET_LSB_8BIT(x)		((x >> 0) & (BIT(8) - 1))
 
 static struct class *mdnie_class;
-static struct mdnie_info *g_mdnie = NULL;
 
 /* Do not call mdnie write directly */
-static int mdnie_write(struct mdnie_info *mdnie, struct mdnie_table *table, unsigned int num)
+static int mdnie_write(struct mdnie_info *mdnie, struct mdnie_table *table)
 {
-	int ret = 0;
+	int i, j, ret = 0;
 
-	if (mdnie->enable)
-		ret = mdnie->ops.write(mdnie->data, table->seq, num);
+	if (mdnie->enable) {
+		for (j = 0; j < MDNIE_CMD_MAX; j++) {
+			for(i = 0; i < table->tune[j].size; i++) {
+				if (j == MDNIE_CMD1)
+					cmds[j].sequence[i] = mdnie_reg_hook(i, table->tune[j].sequence[i]);
+				else
+					cmds[j].sequence[i] = table->tune[j].sequence[i];
+			}
+			cmds[j].size = table->tune[j].size;
+			cmds[j].sleep = table->tune[j].sleep;
+		}
+		
+#if 0
+		for (j = 0; j < MDNIE_CMD_MAX; j++) {
+			for(i = 0; i < cmds[j].size; i++) {
+				printk("mdnie: value on CMD%d: 0x%2X ( %3d ) val: 0x%2X ( %3d )\t -> val: 0x%2X ( %3d )\n",
+					j, i, i, 
+					table->tune[j].sequence[i], table->tune[j].sequence[i],
+					cmds[j].sequence[i], cmds[j].sequence[i]);
+			}
+		}
+#endif
+		ret = mdnie->ops.write(mdnie->data, cmds, MDNIE_CMD_MAX);
+	}
 
 	return ret;
 }
@@ -62,9 +95,10 @@ static int mdnie_write_table(struct mdnie_info *mdnie, struct mdnie_table *table
 	int i, ret = 0;
 	struct mdnie_table *buf = NULL;
 
-	for (i = 0; table->seq[i].len; i++) {
-		if (IS_ERR_OR_NULL(table->seq[i].cmd)) {
-			dev_err(mdnie->dev, "mdnie sequence %s %dth command is null,\n", table->name, i);
+	for (i = 0; i < MDNIE_CMD_MAX; i++) {
+		if (IS_ERR_OR_NULL(table->tune[i].sequence)) {
+			dev_err(mdnie->dev, "mdnie sequence %s is null, %lx\n",
+					table->name, (unsigned long)table->tune[i].sequence);
 			return -EPERM;
 		}
 	}
@@ -73,7 +107,7 @@ static int mdnie_write_table(struct mdnie_info *mdnie, struct mdnie_table *table
 
 	buf = table;
 
-	ret = mdnie_write(mdnie, buf, i);
+	ret = mdnie_write(mdnie, buf);
 
 	mutex_unlock(&mdnie->dev_lock);
 
@@ -83,54 +117,34 @@ static int mdnie_write_table(struct mdnie_info *mdnie, struct mdnie_table *table
 static struct mdnie_table *mdnie_find_table(struct mdnie_info *mdnie)
 {
 	struct mdnie_table *table = NULL;
-	struct mdnie_trans_info *trans_info = mdnie->tune->trans_info;
 
 	mutex_lock(&mdnie->lock);
 
 	if (IS_ACCESSIBILITY(mdnie->accessibility)) {
-		table = &mdnie->tune->accessibility_table[mdnie->accessibility];
+		table = &accessibility_table[mdnie->accessibility];
 		goto exit;
 #ifdef CONFIG_LCD_HMT
 	} else if (IS_HMT(mdnie->hmt_mode)) {
-		table = &mdnie->tune->hmt_table[mdnie->hmt_mode];
+		table = &hmt_table[mdnie->hmt_mode];
 		goto exit;
 #endif
 	} else if (IS_HBM(mdnie->auto_brightness)) {
-#if defined(CONFIG_PANEL_S6E3HA3_DYNAMIC) || defined(CONFIG_PANEL_S6E3HF3_DYNAMIC)
-		if (mdnie->auto_brightness == AOLCE_MIN_BRIGHTNESS)
-			table = &mdnie->tune->hbm_table[HBM_AOLCE_1];
-		else if (mdnie->auto_brightness >= AOLCE_MAX_BRIGHTNESS)
-			table = &mdnie->tune->hbm_table[HBM_AOLCE_3];
+		if((mdnie->scenario == BROWSER_MODE) || (mdnie->scenario == EBOOK_MODE))
+			table = &hbm_table[HBM_ON_TEXT];
 		else
-			table = &mdnie->tune->hbm_table[HBM_AOLCE_2];
-#else
-		if ((mdnie->scenario == BROWSER_MODE) || (mdnie->scenario == EBOOK_MODE))
-			table = &mdnie->tune->hbm_table[HBM_ON_TEXT];
-		else
-			table = &mdnie->tune->hbm_table[HBM_ON];
-#endif
+			table = &hbm_table[HBM_ON];
 		goto exit;
 #if defined(CONFIG_TDMB)
 	} else if (IS_DMB(mdnie->scenario)) {
-		table = &mdnie->tune->dmb_table[mdnie->mode];
+		table = &dmb_table[mdnie->mode];
 		goto exit;
 #endif
 	} else if (IS_SCENARIO(mdnie->scenario)) {
-		table = &mdnie->tune->main_table[mdnie->scenario][mdnie->mode];
+		table = &tuning_table[mdnie->scenario][mdnie->mode];
 		goto exit;
 	}
 
 exit:
-	if (trans_info->enable && mdnie->disable_trans_dimming && (table != NULL)) {
-		dev_info(mdnie->dev, "%s: disable_trans_dimming=%d\n", __func__, mdnie->disable_trans_dimming);
-		memcpy(&(mdnie->table_buffer), table, sizeof(struct mdnie_table));
-		memcpy(mdnie->sequence_buffer, table->seq[trans_info->index].cmd, table->seq[trans_info->index].len);
-		mdnie->table_buffer.seq[trans_info->index].cmd = mdnie->sequence_buffer;
-		mdnie->table_buffer.seq[trans_info->index].cmd[trans_info->offset] = 0x0;
-		mutex_unlock(&mdnie->lock);
-		return &(mdnie->table_buffer);
-	}
-
 	mutex_unlock(&mdnie->lock);
 
 	return table;
@@ -138,17 +152,22 @@ exit:
 
 static void mdnie_update_sequence(struct mdnie_info *mdnie, struct mdnie_table *table)
 {
-	if (mdnie->tuning)
-		mdnie_request_table(mdnie->path, table);
+	struct mdnie_table *t = NULL;
 
-	mdnie_write_table(mdnie, table);
+	if (mdnie->tuning) {
+		t = mdnie_request_table(mdnie->path, table);
+		if (!IS_ERR_OR_NULL(t) && !IS_ERR_OR_NULL(t->name))
+			mdnie_write_table(mdnie, t);
+		else
+			mdnie_write_table(mdnie, table);
+	} else
+		mdnie_write_table(mdnie, table);
 	return;
 }
 
-static void mdnie_update(struct mdnie_info *mdnie)
+void mdnie_update(struct mdnie_info *mdnie)
 {
 	struct mdnie_table *table = NULL;
-	struct mdnie_scr_info *scr_info = mdnie->tune->scr_info;
 
 	if (!mdnie->enable) {
 		dev_err(mdnie->dev, "mdnie state is off\n");
@@ -160,9 +179,9 @@ static void mdnie_update(struct mdnie_info *mdnie)
 		mdnie_update_sequence(mdnie, table);
 		dev_info(mdnie->dev, "%s\n", table->name);
 
-		mdnie->white_r = table->seq[scr_info->index].cmd[scr_info->white_r];
-		mdnie->white_g = table->seq[scr_info->index].cmd[scr_info->white_g];
-		mdnie->white_b = table->seq[scr_info->index].cmd[scr_info->white_b];
+		mdnie->white_r = table->tune[MDNIE_CMD1].sequence[MDNIE_WHITE_R];
+		mdnie->white_g = table->tune[MDNIE_CMD1].sequence[MDNIE_WHITE_G];
+		mdnie->white_b = table->tune[MDNIE_CMD1].sequence[MDNIE_WHITE_B];
 	}
 
 	return;
@@ -172,7 +191,6 @@ static void update_color_position(struct mdnie_info *mdnie, unsigned int idx)
 {
 	u8 mode, scenario;
 	mdnie_t *wbuf;
-	struct mdnie_scr_info *scr_info = mdnie->tune->scr_info;
 
 	dev_info(mdnie->dev, "%s: idx=%d\n", __func__, idx);
 
@@ -180,13 +198,13 @@ static void update_color_position(struct mdnie_info *mdnie, unsigned int idx)
 
 	for (mode = 0; mode < MODE_MAX; mode++) {
 		for (scenario = 0; scenario <= EMAIL_MODE; scenario++) {
-			wbuf = mdnie->tune->main_table[scenario][mode].seq[scr_info->index].cmd;
+			wbuf = tuning_table[scenario][mode].tune[MDNIE_CMD1].sequence;
 			if (IS_ERR_OR_NULL(wbuf))
 				continue;
 			if (scenario != EBOOK_MODE) {
-				wbuf[scr_info->white_r] = mdnie->tune->coordinate_table[mode][idx * 3 + 0];
-				wbuf[scr_info->white_g] = mdnie->tune->coordinate_table[mode][idx * 3 + 1];
-				wbuf[scr_info->white_b] = mdnie->tune->coordinate_table[mode][idx * 3 + 2];
+				wbuf[MDNIE_WHITE_R] = coordinate_data[mode][idx][0];
+				wbuf[MDNIE_WHITE_G] = coordinate_data[mode][idx][1];
+				wbuf[MDNIE_WHITE_B] = coordinate_data[mode][idx][2];
 			}
 		}
 	}
@@ -203,21 +221,16 @@ static int get_panel_coordinate(struct mdnie_info *mdnie, int *result)
 	x = mdnie->coordinate[0];
 	y = mdnie->coordinate[1];
 
-	if( !(x || y)) {
-		dev_info(mdnie->dev, "This panel do not need to adjust coordinate\n");
-		ret = -EINVAL;
-		goto skip_color_correction;
-	}
 
-	result[1] = mdnie->tune->color_offset[0](x, y);
-	result[2] = mdnie->tune->color_offset[1](x, y);
-	result[3] = mdnie->tune->color_offset[2](x, y);
-	result[4] = mdnie->tune->color_offset[3](x, y);
+	result[1] = COLOR_OFFSET_F1(x, y);
+	result[2] = COLOR_OFFSET_F2(x, y);
+	result[3] = COLOR_OFFSET_F3(x, y);
+	result[4] = COLOR_OFFSET_F4(x, y);
 
 	ret = mdnie_calibration(result);
 	dev_info(mdnie->dev, "%s: %d, %d, idx=%d\n", __func__, x, y, ret);
 
-skip_color_correction:
+//skip_color_correction:
 	mdnie->color_correction = 1;
 
 	return ret;
@@ -305,7 +318,7 @@ static ssize_t tuning_show(struct device *dev,
 	struct mdnie_info *mdnie = dev_get_drvdata(dev);
 	char *pos = buf;
 	struct mdnie_table *table = NULL;
-	int i, idx;
+	int i;
 
 	pos += sprintf(pos, "++ %s: %s\n", __func__, mdnie->path);
 
@@ -321,12 +334,14 @@ static ssize_t tuning_show(struct device *dev,
 
 	table = mdnie_find_table(mdnie);
 	if (!IS_ERR_OR_NULL(table) && !IS_ERR_OR_NULL(table->name)) {
-		mdnie_request_table(mdnie->path, table);
-		for (idx = 0; table->seq[idx].len; idx++) {
-			for (i = 0; i < table->seq[idx].len; i++)
-				pos += sprintf(pos, "0x%02x ", table->seq[idx].cmd[i]);
-		}
+		table = mdnie_request_table(mdnie->path, table);
+		for (i = 0; i < table->tune[MDNIE_CMD1].size; i++)
+			pos += sprintf(pos, "0x%02x ", table->tune[MDNIE_CMD1].sequence[i]);
 		pos += sprintf(pos, "\n");
+		if (MDNIE_CMD1 != MDNIE_CMD2) {
+			for (i = 0; i < table->tune[MDNIE_CMD2].size; i++)
+				pos += sprintf(pos, "0x%02x ", table->tune[MDNIE_CMD2].sequence[i]);
+		}
 	}
 
 exit:
@@ -380,17 +395,15 @@ static ssize_t accessibility_store(struct device *dev,
 		struct device_attribute *attr, const char *buf, size_t count)
 {
 	struct mdnie_info *mdnie = dev_get_drvdata(dev);
-	int value;
-	unsigned int s[12] = {0, }, i = 0;
+	unsigned int value, s[9], i = 0;
 	int ret;
 	mdnie_t *wbuf;
-	struct mdnie_scr_info *scr_info = mdnie->tune->scr_info;
 
-	ret = sscanf(buf, "%d %x %x %x %x %x %x %x %x %x %x %x %x",
+	ret = sscanf(buf, "%d %x %x %x %x %x %x %x %x %x",
 		&value, &s[0], &s[1], &s[2], &s[3],
-		&s[4], &s[5], &s[6], &s[7], &s[8], &s[9], &s[10], &s[11]);
+		&s[4], &s[5], &s[6], &s[7], &s[8]);
 
-	dev_info(dev, "%s: value: %d, cnt: %d\n", __func__, value, ret);
+	dev_info(dev, "%s: value=%d\n", __func__, value);
 
 	if (ret < 0)
 		return ret;
@@ -400,14 +413,13 @@ static ssize_t accessibility_store(struct device *dev,
 
 		mutex_lock(&mdnie->lock);
 		mdnie->accessibility = value;
-		mdnie->scenario = UI_MODE;
-		if (value == COLOR_BLIND || value == COLOR_BLIND_HBM) {
-			if (ret > ARRAY_SIZE(s) + 1) {
+		if (value == COLOR_BLIND) {
+			if (ret != 10) {
 				mutex_unlock(&mdnie->lock);
 				return -EINVAL;
 			}
-			wbuf = &mdnie->tune->accessibility_table[value].seq[scr_info->index].cmd[scr_info->color_blind];
-			while (i < ret - 1) {
+			wbuf = &accessibility_table[COLOR_BLIND].tune[MDNIE_CMD1].sequence[MDNIE_COLOR_BLIND_OFFSET];
+			while (i < ARRAY_SIZE(s)) {
 				wbuf[i * 2 + 0] = GET_LSB_8BIT(s[i]);
 				wbuf[i * 2 + 1] = GET_MSB_8BIT(s[i]);
 				i++;
@@ -423,15 +435,6 @@ static ssize_t accessibility_store(struct device *dev,
 	return count;
 }
 
-//gm
-void mdnie_toggle_negative(void)
-{
-	mutex_lock(&g_mdnie->lock);
-	g_mdnie->accessibility = !g_mdnie->accessibility;
-	mutex_unlock(&g_mdnie->lock);
-	mdnie_update(g_mdnie);
-}
-
 static ssize_t color_correct_show(struct device *dev,
 		struct device_attribute *attr, char *buf)
 {
@@ -444,7 +447,7 @@ static ssize_t color_correct_show(struct device *dev,
 
 	idx = get_panel_coordinate(mdnie, result);
 
-	for (i = 1; i < (int)ARRAY_SIZE(result); i++)
+	for (i = 1; i < (int) ARRAY_SIZE(result); i++)
 		pos += sprintf(pos, "f%d: %d, ", i, result[i]);
 	pos += sprintf(pos, "tune%d\n", idx);
 
@@ -483,7 +486,7 @@ static ssize_t bypass_store(struct device *dev,
 		mdnie->bypass = value;
 		mutex_unlock(&mdnie->lock);
 
-		table = &mdnie->tune->bypass_table[value];
+		table = &bypass_table[value];
 		if (!IS_ERR_OR_NULL(table)) {
 			mdnie_write_table(mdnie, table);
 			dev_info(mdnie->dev, "%s\n", table->name);
@@ -496,13 +499,9 @@ static ssize_t bypass_store(struct device *dev,
 static ssize_t auto_brightness_show(struct device *dev,
 		struct device_attribute *attr, char *buf)
 {
-#if defined(CONFIG_PANEL_S6E3HA3_DYNAMIC) || defined(CONFIG_PANEL_S6E3HF3_DYNAMIC)
-	return sprintf(buf, "%d\n", AOLCE_MAX_BRIGHTNESS);
-#else
 	struct mdnie_info *mdnie = dev_get_drvdata(dev);
 
 	return sprintf(buf, "%d, hbm: %d\n", mdnie->auto_brightness, mdnie->hbm);
-#endif
 }
 
 static ssize_t auto_brightness_store(struct device *dev,
@@ -520,16 +519,7 @@ static ssize_t auto_brightness_store(struct device *dev,
 	dev_info(dev, "%s: value=%d\n", __func__, value);
 
 	mutex_lock(&mdnie->lock);
-#if defined(CONFIG_PANEL_S6E3HA3_DYNAMIC) || defined(CONFIG_PANEL_S6E3HF3_DYNAMIC)
-	update = 0;
-	if (IS_HBM(mdnie->auto_brightness) == IS_HBM(value)) {
-		if (IS_HBM(mdnie->auto_brightness)&&(mdnie->auto_brightness != value))
-			update = 1;
-	} else
-		update = 1;
-#else
 	update = (IS_HBM(mdnie->auto_brightness) != IS_HBM(value)) ? 1 : 0;
-#endif
 	mdnie->hbm = IS_HBM(value) ? HBM_ON : HBM_OFF;
 	mdnie->auto_brightness = value;
 	mutex_unlock(&mdnie->lock);
@@ -557,29 +547,27 @@ static ssize_t mdnie_show(struct device *dev,
 
 	table = mdnie_find_table(mdnie);
 
-	for (i = 0; table->seq[i].len; i++) {
-		if (IS_ERR_OR_NULL(table->seq[i].cmd)) {
-			dev_err(mdnie->dev, "mdnie sequence %s %dth command is null,\n", table->name, i);
+	for (i = 0; i < MDNIE_CMD_MAX; i++) {
+		if (IS_ERR_OR_NULL(table->tune[i].sequence)) {
+			dev_err(mdnie->dev, "mdnie sequence %s is null, %lx\n",
+				table->name, (unsigned long)table->tune[i].sequence);
 			goto exit;
 		}
 	}
 
+	/* should be fixed later, or removed */
+	/* mdnie->ops.write(mdnie->data, table->tune[LEVEL1_KEY_UNLOCK].sequence, table->tune[LEVEL1_KEY_UNLOCK].size); */
+
 	pos += sprintf(pos, "+ %s\n", table->name);
 
-	for (j = 0; table->seq[j].len; j++) {
-		if (!table->update_flag[j]) {
-			mdnie->ops.write(mdnie->data, &table->seq[j], 1);
-			continue;
-		}
+	for (j = MDNIE_CMD1; j <= MDNIE_CMD2; j++) {
+		buffer = kzalloc(table->tune[j].size, GFP_KERNEL);
 
-		buffer = kzalloc(table->seq[j].len, GFP_KERNEL);
+		mdnie->ops.read(mdnie->data, table->tune[j].sequence[0], buffer, table->tune[j].size - 1);
 
-		mdnie->ops.read(mdnie->data, table->seq[j].cmd[0], buffer, table->seq[j].len - 1);
-
-		pos += sprintf(pos, "  0:\t0x%02x\t0x%02x\n", table->seq[j].cmd[0], table->seq[j].cmd[0]);
-		for (i = 0; i < table->seq[j].len - 1; i++) {
-			pos += sprintf(pos, "%3d:\t0x%02x\t0x%02x", i + 1, table->seq[j].cmd[i+1], buffer[i]);
-			if (table->seq[j].cmd[i+1] != buffer[i])
+		for (i = 0; i < table->tune[j].size - 1; i++) {
+			pos += sprintf(pos, "%3d:\t0x%02x\t0x%02x", i + 1, table->tune[j].sequence[i+1], buffer[i]);
+			if (table->tune[j].sequence[i+1] != buffer[i])
 				pos += sprintf(pos, "\t(X)");
 			pos += sprintf(pos, "\n");
 		}
@@ -588,6 +576,8 @@ static ssize_t mdnie_show(struct device *dev,
 	}
 
 	pos += sprintf(pos, "- %s\n", table->name);
+
+	/* mdnie->ops.write(mdnie->data, table->tune[LEVEL1_KEY_LOCK].sequence, table->tune[LEVEL1_KEY_LOCK].size); */
 
 exit:
 	return pos - buf;
@@ -608,7 +598,6 @@ static ssize_t sensorRGB_store(struct device *dev,
 	struct mdnie_table *table = NULL;
 	unsigned int white_red, white_green, white_blue;
 	int ret;
-	struct mdnie_scr_info *scr_info = mdnie->tune->scr_info;
 
 	ret = sscanf(buf, "%d %d %d"
 		, &white_red, &white_green, &white_blue);
@@ -627,17 +616,17 @@ static ssize_t sensorRGB_store(struct device *dev,
 		memcpy(&(mdnie->table_buffer),
 			table, sizeof(struct mdnie_table));
 		memcpy(mdnie->sequence_buffer,
-			table->seq[scr_info->index].cmd,
-			table->seq[scr_info->index].len);
-		mdnie->table_buffer.seq[scr_info->index].cmd
+			table->tune[MDNIE_CMD1].sequence,
+			table->tune[MDNIE_CMD1].size);
+		mdnie->table_buffer.tune[MDNIE_CMD1].sequence
 			= mdnie->sequence_buffer;
 
-		mdnie->table_buffer.seq[scr_info->index].cmd
-			[scr_info->white_r] = (unsigned char)white_red;
-		mdnie->table_buffer.seq[scr_info->index].cmd
-			[scr_info->white_g] = (unsigned char)white_green;
-		mdnie->table_buffer.seq[scr_info->index].cmd
-			[scr_info->white_b] = (unsigned char)white_blue;
+		mdnie->table_buffer.tune[MDNIE_CMD1].sequence
+			[MDNIE_WHITE_R] = (unsigned char)white_red;
+		mdnie->table_buffer.tune[MDNIE_CMD1].sequence
+			[MDNIE_WHITE_G] = (unsigned char)white_green;
+		mdnie->table_buffer.tune[MDNIE_CMD1].sequence
+			[MDNIE_WHITE_B] = (unsigned char)white_blue;
 
 		mdnie->white_r = white_red;
 		mdnie->white_g = white_green;
@@ -648,58 +637,6 @@ static ssize_t sensorRGB_store(struct device *dev,
 
 	return count;
 }
-
-#ifdef CONFIG_LCD_BURNIN_CORRECTION
-static ssize_t mdnie_ldu_show(struct device *dev,
-		struct device_attribute *attr, char *buf)
-{
-	struct mdnie_info *mdnie = dev_get_drvdata(dev);
-	return sprintf(buf, "%d %d %d\n", mdnie->white_r,
-		mdnie->white_g, mdnie->white_b);
-}
-
-static ssize_t mdnie_ldu_store(struct device *dev,
-		struct device_attribute *attr, const char *buf, size_t count)
-{
-	struct mdnie_info *mdnie = dev_get_drvdata(dev);
-	mdnie_t *wbuf;
-	u8 mode, scenario;
-	int idx;
-	int ret;
-	struct mdnie_scr_info *scr_info = mdnie->tune->scr_info;
-
-	ret = sscanf(buf, "%d", &idx);
-	if (ret < 0)
-		return ret;
-
-	if (idx < 0 || idx > 5) {
-		dev_info(dev, "%s: invalid input: %d\n", __func__, idx);
-		return -EINVAL;
-	}
-
-	mutex_lock(&mdnie->lock);
-
-	for (mode = 0; mode < MODE_MAX; mode++) {
-		for (scenario = 0; scenario <= EMAIL_MODE; scenario++) {
-			wbuf = mdnie->tune->main_table[scenario][mode].seq[scr_info->index].cmd;
-			if (IS_ERR_OR_NULL(wbuf))
-				continue;
-			if (scenario != EBOOK_MODE) {
-				wbuf[scr_info->white_r] = mdnie->tune->adjust_ldu_rgb_table[mode][idx * 3 + 0];
-				wbuf[scr_info->white_g] = mdnie->tune->adjust_ldu_rgb_table[mode][idx * 3 + 1];
-				wbuf[scr_info->white_b] = mdnie->tune->adjust_ldu_rgb_table[mode][idx * 3 + 2];
-			}
-		}
-	}
-
-	mutex_unlock(&mdnie->lock);
-
-	mdnie_update(mdnie);
-
-	return count;
-}
-#endif
-
 #ifdef CONFIG_LCD_HMT
 static ssize_t hmtColorTemp_show(struct device *dev,
 		struct device_attribute *attr, char *buf)
@@ -742,9 +679,6 @@ static struct device_attribute mdnie_attributes[] = {
 	__ATTR(auto_brightness, 0664, auto_brightness_show, auto_brightness_store),
 	__ATTR(mdnie, 0444, mdnie_show, NULL),
 	__ATTR(sensorRGB, 0664, sensorRGB_show, sensorRGB_store),
-#ifdef CONFIG_LCD_BURNIN_CORRECTION
-	__ATTR(mdnie_ldu, 0664, mdnie_ldu_show, mdnie_ldu_store),
-#endif
 #ifdef CONFIG_LCD_HMT
 	__ATTR(hmt_color_temperature, 0664, hmtColorTemp_show, hmtColorTemp_store),
 #endif
@@ -780,13 +714,9 @@ static int fb_notifier_callback(struct notifier_block *self,
 		mutex_unlock(&mdnie->lock);
 
 		mdnie_update(mdnie);
-		if (mdnie->tune->trans_info->enable)
-			mdnie->disable_trans_dimming = 0;
 	} else if (fb_blank == FB_BLANK_POWERDOWN) {
 		mutex_lock(&mdnie->lock);
 		mdnie->enable = 0;
-		if (mdnie->tune->trans_info->enable)
-			mdnie->disable_trans_dimming = 1;
 		mutex_unlock(&mdnie->lock);
 	}
 
@@ -800,32 +730,7 @@ static int mdnie_register_fb(struct mdnie_info *mdnie)
 	return fb_register_client(&mdnie->fb_notif);
 }
 
-#ifdef CONFIG_ALWAYS_RELOAD_MTP_FACTORY_BUILD
-void update_mdnie_coordinate( u16 coordinate0, u16 coordinate1 )
-{
-	struct mdnie_info *mdnie = g_mdnie;
-	int ret;
-	int result[5] = {0,};
-
-	if( mdnie == NULL ) {
-		pr_err( "%s : mdnie has not initialized\n", __func__ );
-		return;
-	}
-
-	pr_info( "%s : reload MDNIE-MTP\n", __func__ );
-
-	mdnie->coordinate[0] = coordinate0;
-	mdnie->coordinate[1] = coordinate1;
-
-	ret = get_panel_coordinate(mdnie, result);
-	if (ret > 0)
-		update_color_position(mdnie, ret);
-
-	return;
-}
-#endif	// CONFIG_ALWAYS_RELOAD_MTP_FACTORY_BUILD
-
-int mdnie_register(struct device *p, void *data, mdnie_w w, mdnie_r r, u16 *coordinate, struct mdnie_tune *tune)
+int mdnie_register(struct device *p, void *data, mdnie_w w, mdnie_r r, u16 *coordinate)
 {
 	int ret = 0;
 	struct mdnie_info *mdnie;
@@ -859,7 +764,6 @@ int mdnie_register(struct device *p, void *data, mdnie_w w, mdnie_r r, u16 *coor
 	mdnie->tuning = 0;
 	mdnie->accessibility = ACCESSIBILITY_OFF;
 	mdnie->bypass = BYPASS_OFF;
-	mdnie->disable_trans_dimming = 0;
 
 	mdnie->data = data;
 	mdnie->ops.write = w;
@@ -867,7 +771,6 @@ int mdnie_register(struct device *p, void *data, mdnie_w w, mdnie_r r, u16 *coor
 
 	mdnie->coordinate[0] = coordinate[0];
 	mdnie->coordinate[1] = coordinate[1];
-	mdnie->tune = tune;
 
 	mutex_init(&mdnie->lock);
 	mutex_init(&mdnie->dev_lock);
@@ -877,9 +780,9 @@ int mdnie_register(struct device *p, void *data, mdnie_w w, mdnie_r r, u16 *coor
 	mdnie_register_fb(mdnie);
 
 	mdnie->enable = 1;
+	
+	init_mdnie_control(mdnie);
 	mdnie_update(mdnie);
-
-	g_mdnie = mdnie;
 
 	dev_info(mdnie->dev, "registered successfully\n");
 
@@ -887,7 +790,6 @@ int mdnie_register(struct device *p, void *data, mdnie_w w, mdnie_r r, u16 *coor
 
 error2:
 	kfree(mdnie);
-	kfree(g_mdnie);
 error1:
 	class_destroy(mdnie_class);
 error0:
