@@ -198,9 +198,6 @@ int __do_page_cache_readahead(struct address_space *mapping, struct file *filp,
 #endif
 
 		page->index = page_offset;
-
-		page->flags |= (1L << PG_readahead);
-
 		list_add(&page->lru, &page_pool);
 		if (page_idx == nr_to_read - lookahead_size)
 			SetPageReadahead(page);
@@ -235,7 +232,7 @@ int force_page_cache_readahead(struct address_space *mapping, struct file *filp,
 	while (nr_to_read) {
 		int err;
 
-		unsigned long this_chunk = (2 * 1024 * 1024) / PAGE_CACHE_SIZE;
+		unsigned long this_chunk = (2097152) >> PAGE_CACHE_SHIFT;
 
 		if (this_chunk > nr_to_read)
 			this_chunk = nr_to_read;
@@ -259,13 +256,11 @@ int force_page_cache_readahead(struct address_space *mapping, struct file *filp,
 unsigned long max_sane_readahead(unsigned long nr)
 {
 	return min(nr, (node_page_state(numa_node_id(), NR_INACTIVE_FILE)
-		+ node_page_state(numa_node_id(), NR_FREE_PAGES)) / 2);
+		+ node_page_state(numa_node_id(), NR_FREE_PAGES)) >> 1);
 }
 
 /*
  * Set the initial window size, round to next power of 2 and square
- * Small size is not dependant on max value - only a one-page read is regarded
- * as small.
  * for small size, x 4 for medium, and x 2 for large
  * for 128k (32 page) max ra
  * 1-8 page = 32k initial, > 8 page = 128k initial
@@ -274,10 +269,10 @@ static unsigned long get_init_ra_size(unsigned long size, unsigned long max)
 {
 	unsigned long newsize = roundup_pow_of_two(size);
 
-	if (newsize <= 1)
-		newsize = newsize * 4;
-	else if (newsize <= max / 4)
-		newsize = newsize * 2;
+	if (newsize <= (max >> 5))
+		newsize = newsize << 2;
+	else if (newsize <= (max >> 2))
+		newsize = newsize << 1;
 	else
 		newsize = max;
 
@@ -294,10 +289,10 @@ static unsigned long get_next_ra_size(struct file_ra_state *ra,
 	unsigned long cur = ra->size;
 	unsigned long newsize;
 
-	if (cur < max / 16)
-		newsize = 4 * cur;
+	if (cur < (max >> 4))
+		newsize = cur >> 2;
 	else
-		newsize = 2 * cur;
+		newsize = cur >> 1;
 
 	return min(newsize, max);
 }
@@ -385,7 +380,7 @@ static int try_context_readahead(struct address_space *mapping,
 	 * it is a strong indication of long-run stream (or whole-file-read)
 	 */
 	if (size >= offset)
-		size *= 2;
+		size <<= 1;
 
 	ra->start = offset;
 	ra->size = min(size + req_size, max);
