@@ -61,8 +61,8 @@
 #define POWER_COEFF_15P		57 /* percore param */
 #define POWER_COEFF_7P		11 /* percore  param */
 #elif defined(CONFIG_SOC_EXYNOS7420)
-#define POWER_COEFF_15P		59 /* percore param */
-#define POWER_COEFF_7P		17 /* percore  param */
+#define POWER_COEFF_15P		46 /* percore param */
+#define POWER_COEFF_7P		13 /* percore  param */
 #else
 #define POWER_COEFF_15P		48 /* percore param */
 #define POWER_COEFF_7P		9 /* percore  param */
@@ -81,20 +81,10 @@
 #endif
 
 #ifdef CONFIG_SOC_EXYNOS7420
-	#ifdef EXYNOS7420_CPU_UNDERCLOCK
-		#define CL0_MIN_FREQ		200000
-		#define CL1_MIN_FREQ		200000
-	#else
-		#define CL0_MIN_FREQ		400000
-		#define CL1_MIN_FREQ		800000
-	#endif
-	#ifdef EXYNOS7420_CPU_OVERCLOCK
-		#define CL0_MAX_FREQ		1600000
-		#define CL1_MAX_FREQ		2500000
-	#else
-		#define CL0_MAX_FREQ		1500000
-		#define CL1_MAX_FREQ		2100000
-	#endif
+#define CL0_MIN_FREQ		400000
+#define CL0_MAX_FREQ		1500000
+#define CL1_MIN_FREQ		800000
+#define CL1_MAX_FREQ		2100000
 #else
 #error "Please define core frequency ranges for current SoC."
 #endif
