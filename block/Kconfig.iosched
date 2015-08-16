@@ -21,17 +21,6 @@ config IOSCHED_DEADLINE
 	  a new point in the service tree and doing a batch of IO from there
 	  in case of expiry.
 
-config IOSCHED_ROW
-	tristate "ROW I/O scheduler"
-	default y
-	---help---
-	  The ROW I/O scheduler gives priority to READ requests over the
-	  WRITE requests when dispatching, without starving WRITE requests.
-	  Requests are kept in priority queues. Dispatching is done in a RR
-	  manner when the dispatch quantum for each queue is calculated
-	  according to queue priority.
-	  Most suitable for mobile devices.
-
 config IOSCHED_CFQ
 	tristate "CFQ I/O scheduler"
 	default y
@@ -43,12 +32,23 @@ config IOSCHED_CFQ
 
 	  This is the default I/O scheduler.
 
-config CFQ_GROUP_IOSCHED
-	bool "CFQ Group Scheduling support"
-	depends on IOSCHED_CFQ && BLK_CGROUP
+config IOSCHED_TRIPNDROID
+	tristate "TripNDroid IO Scheduler"
 	default n
 	---help---
-	  Enable group IO scheduling in CFQ.
+	  The TripNDroid IO Scheduler is based on noop, deadline and vr
+	  it uses deadlines to ensure some fairness. The scheduler is build
+	  to keep a minimum overhead. It is mainly build for mobile devices.
+
+config IOSCHED_SIOPLUS
+	tristate "Simple I/O scheduler plus"
+	default y
+	---help---
+	  The Simple I/O scheduler is an extremely simple scheduler,
+	  based on noop and deadline, that relies on deadlines to
+	  ensure fairness. The algorithm does not do any sorting but
+	  basic merging, trying to keep a minimum overhead. It is aimed
+	  mainly for aleatory access devices (eg: flash devices).
 
 config IOSCHED_BFQ
 	tristate "BFQ I/O scheduler"
@@ -88,15 +88,11 @@ choice
 	config DEFAULT_DEADLINE
 		bool "Deadline" if IOSCHED_DEADLINE=y
 
-	config DEFAULT_ROW
-		bool "ROW" if IOSCHED_ROW=y
-		help
-		  The ROW I/O scheduler gives priority to READ requests
-		  over the WRITE requests when dispatching, without starving
-		  WRITE requests. Requests are kept in priority queues.
-		  Dispatching is done in a RR manner when the dispatch quantum
-		  for each queue is defined according to queue priority.
-		  Most suitable for mobile devices.
+	config DEFAULT_TRIPNDROID
+		bool "TD" if IOSCHED_TRIPNDROID=y
+
+	config DEFAULT_SIOPLUS
+		bool "SIOPLUS" if IOSCHED_SIOPLUS=y
 
 	config DEFAULT_CFQ
 		bool "CFQ" if IOSCHED_CFQ=y
@@ -114,20 +110,14 @@ choice
 		  any workload. It also tries to guarantee low latency to
 		  interactive and soft real-time applications.
 
-	config DEFAULT_FIOPS
-		bool "FIOPS" if IOSCHED_FIOPS=y
-
-	config DEFAULT_NOOP
-		bool "No-op"
-
 endchoice
 
 config DEFAULT_IOSCHED
 	string
 	default "deadline" if DEFAULT_DEADLINE
-	default "row" if DEFAULT_ROW
+	default "tripndroid" if DEFAULT_TRIPNDROID
+	default "sioplus" if DEFAULT_SIOPLUS
 	default "cfq" if DEFAULT_CFQ
-	default "fiops" if DEFAULT_FIOPS
 	default "bfq" if DEFAULT_BFQ
 	default "noop" if DEFAULT_NOOP
 
