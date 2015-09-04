@@ -408,7 +408,7 @@ static inline bool __cmpxchg_double_slab(struct kmem_cache *s, struct page *page
 		slab_lock(page);
 		if (page->freelist == freelist_old && page->counters == counters_old) {
 			page->freelist = freelist_new;
-			set_page_slub_counters(page, counters_new);
+			page->counters = counters_new;
 			slab_unlock(page);
 			return 1;
 		}
@@ -446,7 +446,7 @@ static inline bool cmpxchg_double_slab(struct kmem_cache *s, struct page *page,
 		slab_lock(page);
 		if (page->freelist == freelist_old && page->counters == counters_old) {
 			page->freelist = freelist_new;
-			set_page_slub_counters(page, counters_new);
+			page->counters = counters_new;
 			slab_unlock(page);
 			local_irq_restore(flags);
 			return 1;
@@ -1456,35 +1456,7 @@ def_alloc:
 		(s->flags & SLAB_RECLAIM_ACCOUNT) ?
 		NR_SLAB_RECLAIMABLE : NR_SLAB_UNRECLAIMABLE,
 		1 << oo_order(oo));
-#ifdef CONFIG_RKP_KDP
-	/*
-	 * We modify the following so that slab alloc for protected data
-	 * types are allocated from our own pool.
-	 */
-	if (s->name)  {
-		u64	sc,va_page;
-		va_page = (u64)__va(page_to_phys(page));
-		
-		if(!strcmp(s->name, CRED_JAR_RO)){
-			for(sc = 0; sc < (1 << oo_order(oo)) ; sc++) {
-				rkp_call(RKP_CMDID(0x50),va_page,0,0,0,0);
-				va_page += PAGE_SIZE;
-			}
-		} 
-		if(!strcmp(s->name, TSEC_JAR)){
-			for(sc = 0; sc < (1 << oo_order(oo)) ; sc++) {
-				rkp_call(RKP_CMDID(0x4e),va_page,0,0,0,0);
-				va_page += PAGE_SIZE;
-			}
-		}
-		if(!strcmp(s->name, VFSMNT_JAR)){
-			for(sc = 0; sc < (1 << oo_order(oo)) ; sc++) {
-				rkp_call(RKP_CMDID(0x4f),va_page,0,0,0,0);
-				va_page += PAGE_SIZE;
-			}
-		}
-	}
-#endif
+
 	return page;
 }
 
@@ -1495,9 +1467,7 @@ static void setup_object(struct kmem_cache *s, struct page *page,
 	if (unlikely(s->ctor))
 		s->ctor(object);
 }
-#ifdef CONFIG_RKP_DMAP_PROT
-extern u8 rkp_started;
-#endif
+
 static struct page *new_slab(struct kmem_cache *s, gfp_t flags, int node)
 {
 	struct page *page;
@@ -1534,12 +1504,7 @@ static struct page *new_slab(struct kmem_cache *s, gfp_t flags, int node)
 	}
 	setup_object(s, page, last);
 	set_freepointer(s, last, NULL);
-#ifdef CONFIG_RKP_DMAP_PROT
-	if(rkp_cred_enable && rkp_started) {
-		rkp_call(RKP_CMDID(0x4a),page_to_phys(page),compound_order(page),
-			1,(unsigned long) __pa(rkp_map_bitmap),0);
-	}
-#endif
+
 	page->freelist = start;
 	page->inuse = page->objects;
 	page->frozen = 1;
