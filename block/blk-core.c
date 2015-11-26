@@ -308,17 +308,20 @@ inline void __blk_run_queue_uncond(struct request_queue *q)
 	 * number of active request_fn invocations such that blk_drain_queue()
 	 * can wait until all these request_fn calls have finished.
 	 */
-	q->request_fn_active++;
+
 	if (!q->notified_urgent &&
 		q->elevator->type->ops.elevator_is_urgent_fn &&
 		q->urgent_request_fn &&
-		q->elevator->type->ops.elevator_is_urgent_fn(q) &&
-		list_empty(&q->flush_data_in_flight)) {
+		q->elevator->type->ops.elevator_is_urgent_fn(q)) {
 		q->notified_urgent = true;
+		q->request_fn_active++;
 		q->urgent_request_fn(q);
-	} else
+		q->request_fn_active--;
+	} else {
+		q->request_fn_active++;
 		q->request_fn(q);
-	q->request_fn_active--;
+		q->request_fn_active--;
+	}
 }
 
 /**
@@ -1234,7 +1237,7 @@ void blk_requeue_request(struct request_queue *q, struct request *rq)
 		 * urgent requests. We want to be able to track this
 		 * down.
 		 */
-		pr_debug("%s(): reinserting an URGENT request", __func__);
+		pr_err("%s(): requeueing an URGENT request", __func__);
 		WARN_ON(!q->dispatched_urgent);
 		q->dispatched_urgent = false;
 	}
@@ -1271,7 +1274,7 @@ int blk_reinsert_request(struct request_queue *q, struct request *rq)
 		 * urgent requests. We want to be able to track this
 		 * down.
 		 */
-		pr_debug("%s(): requeueing an URGENT request", __func__);
+		pr_err("%s(): reinserting an URGENT request", __func__);
 		WARN_ON(!q->dispatched_urgent);
 		q->dispatched_urgent = false;
 	}
@@ -1924,27 +1927,6 @@ void generic_make_request(struct bio *bio)
 }
 EXPORT_SYMBOL(generic_make_request);
 
-#ifdef CONFIG_BLK_DEV_IO_TRACE
-static inline struct task_struct *get_dirty_task(struct bio *bio)
-{
-	/*
-	 * Not all the pages in the bio are dirtied by the
-	 * same task but most likely it will be, since the
-	 * sectors accessed on the device must be adjacent.
-	 */
-	if (bio->bi_io_vec && bio->bi_io_vec->bv_page &&
-		bio->bi_io_vec->bv_page->tsk_dirty)
-			return bio->bi_io_vec->bv_page->tsk_dirty;
-	else
-		return current;
-}
-#else
-static inline struct task_struct *get_dirty_task(struct bio *bio)
-{
-	return current;
-}
-#endif
-
 /**
  * submit_bio - submit a bio to the block device layer for I/O
  * @rw: whether to %READ or %WRITE, or maybe to %READA (read ahead)
@@ -1980,11 +1962,8 @@ void submit_bio(int rw, struct bio *bio)
 
 		if (unlikely(block_dump)) {
 			char b[BDEVNAME_SIZE];
-			struct task_struct *tsk;
-
-			tsk = get_dirty_task(bio);
 			printk(KERN_DEBUG "%s(%d): %s block %Lu on %s (%u sectors)\n",
-				tsk->comm, task_pid_nr(tsk),
+			current->comm, task_pid_nr(current),
 				(rw & WRITE) ? "WRITE" : "READ",
 				(unsigned long long)bio->bi_sector,
 				bdevname(bio->bi_bdev, b),
@@ -2176,7 +2155,8 @@ static void blk_account_io_done(struct request *req)
 static struct request *blk_pm_peek_request(struct request_queue *q,
 					   struct request *rq)
 {
-	if (q->dev && q->rpm_status != RPM_ACTIVE && !(rq->cmd_flags & REQ_PM))
+	if (q->dev && (q->rpm_status == RPM_SUSPENDED ||
+	    (q->rpm_status != RPM_ACTIVE && !(rq->cmd_flags & REQ_PM))))
 		return NULL;
 	else
 		return rq;
@@ -3202,9 +3182,6 @@ int blk_pre_runtime_suspend(struct request_queue *q)
 {
 	int ret = 0;
 
-	if (!q->dev)
-		return ret;
-
 	spin_lock_irq(q->queue_lock);
 	if (q->nr_pending) {
 		ret = -EBUSY;
@@ -3232,9 +3209,6 @@ EXPORT_SYMBOL(blk_pre_runtime_suspend);
  */
 void blk_post_runtime_suspend(struct request_queue *q, int err)
 {
-	if (!q->dev)
-		return;
-
 	spin_lock_irq(q->queue_lock);
 	if (!err) {
 		q->rpm_status = RPM_SUSPENDED;
@@ -3259,9 +3233,6 @@ EXPORT_SYMBOL(blk_post_runtime_suspend);
  */
 void blk_pre_runtime_resume(struct request_queue *q)
 {
-	if (!q->dev)
-		return;
-
 	spin_lock_irq(q->queue_lock);
 	q->rpm_status = RPM_RESUMING;
 	spin_unlock_irq(q->queue_lock);
@@ -3284,9 +3255,6 @@ EXPORT_SYMBOL(blk_pre_runtime_resume);
  */
 void blk_post_runtime_resume(struct request_queue *q, int err)
 {
-	if (!q->dev)
-		return;
-
 	spin_lock_irq(q->queue_lock);
 	if (!err) {
 		q->rpm_status = RPM_ACTIVE;
@@ -3308,7 +3276,8 @@ int __init blk_dev_init(void)
 
 	/* used for unplugging and affects IO latency/throughput - HIGHPRI */
 	kblockd_workqueue = alloc_workqueue("kblockd",
-					    WQ_MEM_RECLAIM | WQ_HIGHPRI, 0);
+					    WQ_MEM_RECLAIM | WQ_HIGHPRI |
+					    WQ_POWER_EFFICIENT, 0);
 	if (!kblockd_workqueue)
 		panic("Failed to create kblockd\n");
 
