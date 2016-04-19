@@ -29,6 +29,11 @@
 #include "sdio_ops.h"
 #include "sdio_cis.h"
 
+// Sony Kitakami R2
+#if defined(CONFIG_MACH_SONY_SUZURAN) || defined(CONFIG_MACH_SONY_SUMIRE) || defined(CONFIG_MACH_SONY_SATSUKI)
+#define SELECT_LOW_VOLTAGE
+#endif
+
 #ifdef CONFIG_MMC_EMBEDDED_SDIO
 #include <linux/mmc/sdio_ids.h>
 #endif
@@ -187,6 +192,23 @@ static int sdio_read_cccr(struct mmc_card *card, u32 ocr)
 				card->sw_caps.sd3_drv_type |= SD_DRIVER_TYPE_C;
 			if (data & SDIO_DRIVE_SDTD)
 				card->sw_caps.sd3_drv_type |= SD_DRIVER_TYPE_D;
+
+			ret = mmc_io_rw_direct(card, 0, 0,
+				SDIO_CCCR_INTERRUPT_EXTENSION, 0, &data);
+			if (ret)
+				goto out;
+			if (data & SDIO_SUPPORT_ASYNC_INTR) {
+				if (card->host->caps2 &
+				    MMC_CAP2_ASYNC_SDIO_IRQ_4BIT_MODE) {
+					data |= SDIO_ENABLE_ASYNC_INTR;
+					ret = mmc_io_rw_direct(card, 1, 0,
+						SDIO_CCCR_INTERRUPT_EXTENSION,
+						data, NULL);
+					if (ret)
+						goto out;
+					card->cccr.async_intr_sup = 1;
+				}
+			}
 		}
 
 		/* if no uhs mode ensure we check for high speed */
@@ -210,7 +232,7 @@ static int sdio_enable_wide(struct mmc_card *card)
 	int ret;
 	u8 ctrl;
 
-	if (!(card->host->caps & MMC_CAP_4_BIT_DATA))
+	if (!(card->host->caps & (MMC_CAP_4_BIT_DATA | MMC_CAP_8_BIT_DATA)))
 		return 0;
 
 	if (card->cccr.low_speed && !card->cccr.wide_bus)
@@ -226,7 +248,10 @@ static int sdio_enable_wide(struct mmc_card *card)
 
 	/* set as 4-bit bus width */
 	ctrl &= ~SDIO_BUS_WIDTH_MASK;
-	ctrl |= SDIO_BUS_WIDTH_4BIT;
+	if (card->host->caps & MMC_CAP_8_BIT_DATA)
+		ctrl |= SDIO_BUS_WIDTH_8BIT;
+	else if (card->host->caps & MMC_CAP_4_BIT_DATA)
+		ctrl |= SDIO_BUS_WIDTH_4BIT;
 
 	ret = mmc_io_rw_direct(card, 1, 0, SDIO_CCCR_IF, ctrl, NULL);
 	if (ret)
@@ -267,7 +292,7 @@ static int sdio_disable_wide(struct mmc_card *card)
 	int ret;
 	u8 ctrl;
 
-	if (!(card->host->caps & MMC_CAP_4_BIT_DATA))
+	if (!(card->host->caps & (MMC_CAP_4_BIT_DATA | MMC_CAP_8_BIT_DATA)))
 		return 0;
 
 	if (card->cccr.low_speed && !card->cccr.wide_bus)
@@ -277,10 +302,10 @@ static int sdio_disable_wide(struct mmc_card *card)
 	if (ret)
 		return ret;
 
-	if (!(ctrl & SDIO_BUS_WIDTH_4BIT))
+	if (!(ctrl & (SDIO_BUS_WIDTH_4BIT | SDIO_BUS_WIDTH_8BIT)))
 		return 0;
 
-	ctrl &= ~SDIO_BUS_WIDTH_4BIT;
+	ctrl &= ~(SDIO_BUS_WIDTH_4BIT | SDIO_BUS_WIDTH_8BIT);
 	ctrl |= SDIO_BUS_ASYNC_INT;
 
 	ret = mmc_io_rw_direct(card, 1, 0, SDIO_CCCR_IF, ctrl, NULL);
@@ -653,8 +678,11 @@ try_again:
 	/*
 	 * Call the optional HC's init_card function to handle quirks.
 	 */
-	if (host->ops->init_card)
+	if (host->ops->init_card) {
+		mmc_host_clk_hold(host);
 		host->ops->init_card(host, card);
+		mmc_host_clk_release(host);
+	}
 
 	/*
 	 * If the host and card support UHS-I mode request the card
@@ -825,9 +853,12 @@ try_again:
 		 * Switch to wider bus (if supported).
 		 */
 		err = sdio_enable_4bit_bus(card);
-		if (err > 0)
-			mmc_set_bus_width(card->host, MMC_BUS_WIDTH_4);
-		else if (err)
+		if (err > 0) {
+			if (card->host->caps & MMC_CAP_8_BIT_DATA)
+				mmc_set_bus_width(card->host, MMC_BUS_WIDTH_8);
+			else if (card->host->caps & MMC_CAP_4_BIT_DATA)
+				mmc_set_bus_width(card->host, MMC_BUS_WIDTH_4);
+		} else if (err)
 			goto remove;
 	}
 finish:
@@ -984,7 +1015,10 @@ static int mmc_sdio_resume(struct mmc_host *host)
 		/* We may have switched to 1-bit mode during suspend */
 		err = sdio_enable_4bit_bus(host->card);
 		if (err > 0) {
-			mmc_set_bus_width(host, MMC_BUS_WIDTH_4);
+			if (host->caps & MMC_CAP_8_BIT_DATA)
+				mmc_set_bus_width(host, MMC_BUS_WIDTH_8);
+			else if (host->caps & MMC_CAP_4_BIT_DATA)
+				mmc_set_bus_width(host, MMC_BUS_WIDTH_4);
 			err = 0;
 		}
 	}
@@ -1012,6 +1046,27 @@ static int mmc_sdio_resume(struct mmc_host *host)
 	}
 
 	return err;
+}
+
+/*
+ * Select low voltage 1.8v if mmc host has the capability
+ * and other volatages are not available.
+ */
+static int mmc_select_low_voltage(struct mmc_host *host, u32 ocr)
+{
+	int ret = 0;
+
+#if defined(SELECT_LOW_VOLTAGE)
+	if ((host->ocr_avail == MMC_VDD_165_195) && mmc_host_uhs(host) &&
+		((ocr & host->ocr_avail) == 0)) {
+		/* lowest voltage can be selected in mmc_power_cycle */
+		mmc_power_cycle(host);
+		host->ocr = 0;
+		ret = 1;
+	}
+#endif
+
+	return ret;
 }
 
 static int mmc_sdio_power_restore(struct mmc_host *host)
@@ -1058,18 +1113,24 @@ static int mmc_sdio_power_restore(struct mmc_host *host)
 	if (host->ocr_avail_sdio)
 		host->ocr_avail = host->ocr_avail_sdio;
 
-	host->ocr = mmc_select_voltage(host, ocr & ~0x7F);
-	if (!host->ocr) {
-		ret = -EINVAL;
-		goto out;
+	if (!mmc_select_low_voltage(host, ocr)) {
+		host->ocr = mmc_select_voltage(host, ocr & ~0x7F);
+		if (!host->ocr) {
+			ret = -EINVAL;
+			goto out;
+		}
 	}
 
 	if (mmc_host_uhs(host))
 		/* to query card if 1.8V signalling is supported */
 		host->ocr |= R4_18V_PRESENT;
 
+#if defined(SELECT_LOW_VOLTAGE)
 	ret = mmc_sdio_init_card(host, host->ocr, host->card,
 				mmc_card_keep_power(host));
+#else
+	ret = mmc_sdio_init_card(host, host->ocr, host->card, 0);
+#endif
 	if (!ret && host->sdio_irqs)
 		mmc_signal_sdio_irq(host);
 
@@ -1120,14 +1181,16 @@ int mmc_attach_sdio(struct mmc_host *host)
 		ocr &= ~0x7F;
 	}
 
-	host->ocr = mmc_select_voltage(host, ocr);
+	if (!mmc_select_low_voltage(host, ocr)) {
+		host->ocr = mmc_select_voltage(host, ocr);
 
-	/*
-	 * Can we support the voltage(s) of the card(s)?
-	 */
-	if (!host->ocr) {
-		err = -EINVAL;
-		goto err;
+		/*
+		 * Can we support the voltage(s) of the card(s)?
+		 */
+		if (!host->ocr) {
+			err = -EINVAL;
+			goto err;
+		}
 	}
 
 	/*
@@ -1254,31 +1317,22 @@ err:
 
 int sdio_reset_comm(struct mmc_card *card)
 {
-	struct mmc_host *host = card->host;
-	u32 ocr;
-	int err;
+	return mmc_power_restore_host(card->host);
+}
+EXPORT_SYMBOL(sdio_reset_comm);
 
-	printk("%s():\n", __func__);
+void sdio_ctrl_power(struct mmc_host *host, bool onoff)
+{
+	if (host == NULL)
+		return;
+
 	mmc_claim_host(host);
-
-	mmc_go_idle(host);
-
-	mmc_set_clock(host, host->f_min);
-
-	err = mmc_send_io_op_cond(host, 0, &ocr);
-	if (err)
-		goto err;
-
-	host->ocr = mmc_select_voltage(host, ocr);
-	if (!host->ocr) {
-		err = -EINVAL;
-		goto err;
-	}
-
-	err = mmc_sdio_init_card(host, host->ocr, card, 0);
-	if (err)
-		goto err;
-
+	if (onoff)
+		mmc_power_up(host);
+	else
+		mmc_power_off(host);
+	/* Wait at least 1 ms according to SD spec */
+	mmc_delay(1);
 	mmc_release_host(host);
 	return 0;
 err:
@@ -1287,4 +1341,4 @@ err:
 	mmc_release_host(host);
 	return err;
 }
-EXPORT_SYMBOL(sdio_reset_comm);
+EXPORT_SYMBOL(sdio_ctrl_power);
