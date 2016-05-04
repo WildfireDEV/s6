@@ -258,8 +258,8 @@ on boot
     chmod 0660 /sys/devices/system/cpu/cpu0/cpufreq/interactive/multi_cluster0_min_freq
 
     # Assume HMP uses shared cpufreq policy for all LITTLE CPUs
-    chown root root /sys/devices/system/cpu/cpu0/cpufreq/scaling_max_freq
-    chmod 0640 /sys/devices/system/cpu/cpu0/cpufreq/scaling_max_freq
+    chown system system /sys/devices/system/cpu/cpu0/cpufreq/scaling_max_freq
+    chmod 0660 /sys/devices/system/cpu/cpu0/cpufreq/scaling_max_freq
 
     chown system system sys/devices/system/cpu/cpufreq/mp-cpufreq/cluster0_max_freq
     chmod 0660 sys/devices/system/cpu/cpufreq/mp-cpufreq/cluster0_max_freq
@@ -320,8 +320,8 @@ on boot
     chmod 0660 /sys/devices/system/cpu/cpu4/cpufreq/interactive/multi_cluster0_min_freq
 
     # Assume HMP uses shared cpufreq policy for big CPUs
-    chown root root /sys/devices/system/cpu/cpu4/cpufreq/scaling_max_freq
-    chmod 0640 /sys/devices/system/cpu/cpu4/cpufreq/scaling_max_freq
+    chown system system /sys/devices/system/cpu/cpu4/cpufreq/scaling_max_freq
+    chmod 0660 /sys/devices/system/cpu/cpu4/cpufreq/scaling_max_freq
 
     # LITTLE cluster high load
     chown system system /sys/class/sec/sec_slow/timer_rate
@@ -457,9 +457,13 @@ on boot
     setprop ro.mst.support 1
 
     start bootsh
+    wait /data/.arter97/invisible_cpuset
     start uci
 
 on fs
+    start fs_mount
+    wait /dev/block/mounted
+
     mount_all /fstab.samsungexynos7420
     setprop ro.crypto.fuse_sdcard true
 
@@ -535,7 +539,6 @@ on fs
     chown system system /sys/class/lcd/panel/siop_enable
     chown system system /sys/class/lcd/panel/temperature
     chown system media_rw /sys/class/backlight/panel/weakness_hbm_comp
-    chown system system /sys/class/lcd/panel/ldu_correction
 
 # Permissions for MDNIE
     chown system media_rw /sys/class/mdnie/mdnie/mode
@@ -543,7 +546,6 @@ on fs
     chown system system /sys/class/mdnie/mdnie/accessibility
     chown system system /sys/class/mdnie/mdnie/auto_brightness
     chown system system /sys/class/mdnie/mdnie/sensorRGB
-    chown system system /sys/class/mdnie/mdnie/mdnie_ldu
 
 # Permissions for System LSI NFC
 # NFC : Permissions for NFC
@@ -840,6 +842,11 @@ service fwup /sbin/ffu -a
     seclabel u:r:ffu:s0
     critical
     oneshot
+
+service fs_mount /init.mount.sh
+    user root
+    oneshot
+    disabled
 
 service fstrim-service /init.fstrim.sh
     disabled
