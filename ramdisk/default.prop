@@ -21,9 +21,9 @@ debug.atrace.tags.enableflags=0
 #
 # BOOTIMAGE_BUILD_PROPERTIES
 #
-ro.bootimage.build.date=Tue Feb 16 14:52:06 KST 2016
-ro.bootimage.build.date.utc=1455601926
-ro.bootimage.build.fingerprint=samsung/zerofltexx/zeroflte:6.0.1/MMB29K/G920FXXU3DPBG:user/test-keys
+ro.bootimage.build.date=Fri Apr 22 16:20:08 KST 2016
+ro.bootimage.build.date.utc=1461309608
+ro.bootimage.build.fingerprint=samsung/zerofltexx/zeroflte:6.0.1/MMB29K/G920FXXU3DPDP:user/test-keys
 
 # START OVERRIDE (arter97 kernel)
 # SELinux & Knox related
