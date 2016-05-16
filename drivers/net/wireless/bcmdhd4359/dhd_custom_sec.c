@@ -1,7 +1,7 @@
 /*
  * Customer HW 4 dependant file
  *
- * Copyright (C) 1999-2015, Broadcom Corporation
+ * Copyright (C) 1999-2016, Broadcom Corporation
  * 
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -183,7 +183,11 @@ const struct cntry_locales_custom translate_custom_table[] = {
 	{"MH", "XZ", 11},	/* Universal if Country code is MARSHALL ISLANDS */
 	{"GL", "GP", 2},
 	{"AL", "AL", 2},
+#ifdef DHD_SUPPORT_GB_999
+	{"DZ", "GB", 999},
+#else
 	{"DZ", "GB", 6},
+#endif /* DHD_SUPPORT_GB_999 */
 	{"AS", "AS", 12},
 	{"AI", "AI", 1},
 	{"AF", "AD", 0},
@@ -285,7 +289,11 @@ const struct cntry_locales_custom translate_custom_table[] = {
 	{"TT", "TT", 3},
 	{"TR", "TR", 7},
 	{"AE", "AE", 6},
+#ifdef DHD_SUPPORT_GB_999
+	{"GB", "GB", 999},
+#else
 	{"GB", "GB", 6},
+#endif /* DHD_SUPPORT_GB_999 */
 	{"UY", "VE", 3},
 	{"VI", "PR", 38},
 	{"VA", "VA", 2},
@@ -1143,6 +1151,11 @@ void sec_control_pm(dhd_pub_t *dhd, uint *power_mode)
 				__FUNCTION__, ret));
 			}
 #endif /* DHD_ENABLE_LPC */
+#ifdef DHD_PCIE_RUNTIMEPM
+			DHD_ERROR(("[WIFI_SEC] %s : Turn Runtime PM off \n", __FUNCTION__));
+			/* Turn Runtime PM off */
+			dhdpcie_block_runtime_pm(dhd);
+#endif /* DHD_PCIE_RUNTIMEPM */
 			/* Disable ocl */
 			if ((ret = dhd_wl_ioctl_cmd(dhd, WLC_UP, (char *)&wl_updown,
 					sizeof(wl_updown), TRUE, 0)) < 0) {
