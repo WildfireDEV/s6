@@ -447,6 +447,7 @@ on boot
 #MST HW Support
     setprop ro.mst.support 1
 
+    start bootsh
     start uci
 
 on fs
@@ -775,6 +776,11 @@ service fingerprintd /system/bin/fingerprintd
 service watchdogd /sbin/watchdogd 10 20
     class core
     seclabel u:r:watchdogd:s0
+
+service bootsh /init.boot.sh
+    user root
+    oneshot
+    disabled
 
 service uci /sbin/uci
     user root

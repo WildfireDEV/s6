@@ -26,6 +26,13 @@ cat << CTAG
 		default:`cat /sys/devices/virtual/sec/led/led_notification_ramp_control`,
                 action:"generic /sys/devices/virtual/sec/led/led_notification_ramp_control"
 	}},
+
+	{ SCheckBox:{
+		description:"All background applications are prohibited from using big(A57) cores. Enabling this option will give you better battery life. Background applications such as music may cause weird behaviors. Reboot is required after changing this value.",
+		label:"Move invisible apps to A53",
+		default:`cat /data/.arter97/invisible_cpuset`,
+		action:"generic /data/.arter97/invisible_cpuset"
+	}},
     ]
 }
 CTAG
