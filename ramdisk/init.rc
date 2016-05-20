@@ -571,7 +571,7 @@ on post-fs-data
 
     # Separate location for storing security policy files on data    
     #start SEC_PRODUCT_FEATURE_COMMON_SUPPORT_SE_FOR_ANDROID 
-    mkdir /data/security 0700 system system
+    mkdir /data/security 0710 system system_access
     #end SEC_PRODUCT_FEATURE_COMMON_SUPPORT_SE_FOR_ANDROID
     
     # We restorecon /data when file_contexts is changed(SPD, FOTA, HOME)
@@ -614,7 +614,8 @@ on boot
 
     # Tweak background writeout
     write /proc/sys/vm/dirty_expire_centisecs 200
-    # write /proc/sys/vm/dirty_background_ratio  5
+    #write /proc/sys/vm/dirty_background_ratio  5
+    #for dirty_background_ratio, just use kernel default value
 
     # Permissions for System Server and daemons.
     chown radio system /sys/android_power/state
@@ -1080,6 +1081,8 @@ on property:selinux.reload_policy=1
 # SEC_SELINUX
 on property:selinux.sec.restorecon=1
     restorecon_msc -RF /data
+    chown system system_access /data/security/aasa
+    chmod 2750 /data/security/aasa
 
 on property:sys.powerctl=*
     powerctl ${sys.powerctl}
