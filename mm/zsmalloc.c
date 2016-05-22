@@ -254,11 +254,7 @@ struct zs_pool {
 
 	/* Compact classes */
 	struct shrinker shrinker;
-	/*
-	 * To signify that register_shrinker() was successful
-	 * and unregister_shrinker() will not Oops.
-	 */
-	bool shrinker_enabled;
+
 #ifdef CONFIG_ZSMALLOC_STAT
 	struct dentry *stat_dentry;
 #endif
@@ -1819,7 +1815,9 @@ void zs_pool_stats(struct zs_pool *pool, struct zs_pool_stats *stats)
 }
 EXPORT_SYMBOL_GPL(zs_pool_stats);
 
-static unsigned long zs_shrinker_scan(struct shrinker *shrinker,
+static int zs_shrinker_count(struct shrinker *shrinker,
+		struct shrink_control *sc);
+static int zs_shrinker_scan(struct shrinker *shrinker,
 		struct shrink_control *sc)
 {
 	unsigned long pages_freed;
@@ -1834,10 +1832,10 @@ static unsigned long zs_shrinker_scan(struct shrinker *shrinker,
 	 */
 	pages_freed = zs_compact(pool) - pages_freed;
 
-	return pages_freed ? pages_freed : SHRINK_STOP;
+	return zs_shrinker_count(shrinker, sc);
 }
 
-static unsigned long zs_shrinker_count(struct shrinker *shrinker,
+static int zs_shrinker_count(struct shrinker *shrinker,
 		struct shrink_control *sc)
 {
 	int i;
@@ -1861,20 +1859,16 @@ static unsigned long zs_shrinker_count(struct shrinker *shrinker,
 
 static void zs_unregister_shrinker(struct zs_pool *pool)
 {
-	if (pool->shrinker_enabled) {
-		unregister_shrinker(&pool->shrinker);
-		pool->shrinker_enabled = false;
-	}
+	unregister_shrinker(&pool->shrinker);
 }
 
-static int zs_register_shrinker(struct zs_pool *pool)
+static void zs_register_shrinker(struct zs_pool *pool)
 {
-	pool->shrinker.scan_objects = zs_shrinker_scan;
-	pool->shrinker.count_objects = zs_shrinker_count;
+	pool->shrinker.shrink = zs_shrinker_scan;
 	pool->shrinker.batch = 0;
 	pool->shrinker.seeks = DEFAULT_SEEKS;
 
-	return register_shrinker(&pool->shrinker);
+	register_shrinker(&pool->shrinker);
 }
 
 /**
@@ -1966,8 +1960,8 @@ struct zs_pool *zs_create_pool(const char *name, gfp_t flags)
 	 * Not critical, we still can use the pool
 	 * and user can trigger compaction manually.
 	 */
-	if (zs_register_shrinker(pool) == 0)
-		pool->shrinker_enabled = true;
+	zs_register_shrinker(pool);
+
 	return pool;
 
 err:

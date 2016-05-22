@@ -394,8 +394,20 @@ KBUILD_CFLAGS   := -Werror -Wall -Wundef -Wstrict-prototypes -Wno-trigraphs \
 
 # arter97's optimizations
 KBUILD_CFLAGS	+= -pipe -mno-android -fno-pic -O2 -march=armv8-a+crc -mcpu=cortex-a57.cortex-a53 -mtune=cortex-a57.cortex-a53
+# GCC 6.1 is too strict
+KBUILD_CFLAGS	+= -Wno-error=misleading-indentation -Wno-error=tautological-compare -Wno-error=array-bounds -Wno-error=overflow
 # Other unnecessary warnings
-KBUILD_CFLAGS	+= -Wno-unused -Wno-maybe-uninitialized
+KBUILD_CFLAGS	+= -Wno-maybe-uninitialized		\
+		   -Wno-error=unused-but-set-parameter	\
+		   -Wno-error=unused-but-set-variable	\
+		   -Wno-error=unused-function		\
+		   -Wno-error=unused-label		\
+		   -Wno-error=unused-local-typedefs	\
+		   -Wno-error=unused-parameter		\
+		   -Wno-error=unused-result		\
+		   -Wno-error=unused-variable		\
+		   -Wno-error=unused-const-variable	\
+		   -Wno-error=unused-value
 
 KBUILD_AFLAGS_KERNEL :=
 KBUILD_CFLAGS_KERNEL :=
