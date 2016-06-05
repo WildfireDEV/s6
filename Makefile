@@ -389,6 +389,7 @@ KBUILD_CFLAGS   := -Werror -Wall -Wundef -Wstrict-prototypes -Wno-trigraphs \
 		   -Werror-implicit-function-declaration \
 		   -Wno-format-security \
 		   -Wno-error=misleading-indentation \
+		   -Wno-error=tautological-compare \
 		   -fno-delete-null-pointer-checks \
 		   -fdiagnostics-show-option \
 		   -std=gnu89
