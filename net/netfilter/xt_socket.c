@@ -35,7 +35,7 @@
 #include <net/netfilter/nf_conntrack.h>
 #endif
 
-static void
+void
 xt_socket_put_sk(struct sock *sk)
 {
 	if (sk->sk_state == TCP_TIME_WAIT)
