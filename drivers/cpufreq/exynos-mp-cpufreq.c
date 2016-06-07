@@ -1520,12 +1520,17 @@ inline ssize_t set_boot_low_freq(const char *buf, size_t count)
 	}
 
 	return count;
-	
+}
+
+static size_t get_freq_table_size(struct cpufreq_frequency_table *freq_table)
+{
+	size_t tbl_sz = 0;
+	int i;
+
 	for (i = 0; freq_table[i].frequency != CPUFREQ_TABLE_END; i++)
 		tbl_sz++;
 
 	return tbl_sz;
-
 }
 
 static ssize_t show_volt_table(struct kobject *kobj,
@@ -2434,3 +2439,4 @@ static int __init exynos_cpufreq_late_init(void)
 
 late_initcall(exynos_cpufreq_late_init);
 #endif /* CONFIG_SEC_PM && CONFIG_MUIC_NOTIFIER */
+
