@@ -61,8 +61,8 @@
 #define POWER_COEFF_15P		57 /* percore param */
 #define POWER_COEFF_7P		11 /* percore  param */
 #elif defined(CONFIG_SOC_EXYNOS7420)
-#define POWER_COEFF_15P		46 /* percore param */
-#define POWER_COEFF_7P		13 /* percore  param */
+#define POWER_COEFF_15P		59 /* percore param */
+#define POWER_COEFF_7P		17 /* percore  param */
 #else
 #define POWER_COEFF_15P		48 /* percore param */
 #define POWER_COEFF_7P		9 /* percore  param */
@@ -1176,7 +1176,7 @@ static int exynos_cpufreq_cpu_init(struct cpufreq_policy *policy)
 		policy->user_max = policy->max;
 	}
 
-	return cpufreq_frequency_table_cpuinfo(policy, exynos_info[cur]->freq_table);
+	return ret;
 }
 
 static struct cpufreq_driver exynos_driver = {
@@ -1263,13 +1263,9 @@ static ssize_t show_cpufreq_min_limit(struct kobject *kobj,
 	return nsize;
 }
 
-static ssize_t store_cpufreq_min_limit(struct kobject *kobj, struct attribute *attr,
-					const char *buf, size_t count)
+static void save_cpufreq_min_limit(int input)
 {
-	int cluster1_input, cluster0_input;
-
-	if (!sscanf(buf, "%8d", &cluster1_input))
-		return -EINVAL;
+	int cluster1_input = input, cluster0_input;
 
 	if (cluster1_input >= (int)freq_min[CL_ONE]) {
 #ifdef CONFIG_SCHED_HMP
@@ -1357,13 +1353,9 @@ static ssize_t show_cpufreq_max_limit(struct kobject *kobj,
 	return nsize;
 }
 
-static ssize_t store_cpufreq_max_limit(struct kobject *kobj, struct attribute *attr,
-					const char *buf, size_t count)
+static void save_cpufreq_max_limit(int input)
 {
-	int cluster1_input, cluster0_input;
-
-	if (!sscanf(buf, "%8d", &cluster1_input))
-		return -EINVAL;
+	int cluster1_input = input, cluster0_input;
 
 	if (cluster1_input >= (int)freq_min[CL_ONE]) {
 		if (cluster1_hotplugged) {
@@ -1502,10 +1494,10 @@ inline ssize_t store_core_freq(const char *buf, size_t count,
 	return count;
 }
 
-static size_t get_freq_table_size(struct cpufreq_frequency_table *freq_table)
+inline ssize_t set_boot_low_freq(const char *buf, size_t count)
 {
-	size_t tbl_sz = 0;
-	int i;
+	int input;
+	unsigned int set_freq = 0;
 
 	if (!sscanf(buf, "%8d", &input))
 		return -EINVAL;
@@ -2373,7 +2365,7 @@ err_init:
 	return ret;
 }
 
-#ifdef CONFIG_CPU_FREQ_DEFAULT_GOV_INTERACTIVE
+#if defined(CONFIG_CPU_FREQ_DEFAULT_GOV_INTERACTIVE) || defined(CONFIG_CPU_FREQ_DEFAULT_GOV_CAFACTIVE)
 device_initcall(exynos_cpufreq_init);
 #else
 late_initcall(exynos_cpufreq_init);
