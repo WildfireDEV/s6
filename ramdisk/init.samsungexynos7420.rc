@@ -824,11 +824,14 @@ service fwup /sbin/ffu -a
     critical
     oneshot
 
+<<<<<<< HEAD
 service bootdone /init.bootdone.sh
     disabled
     user root
     oneshot
 
+=======
+>>>>>>> 34513c0... ramdisk: allow custom mountpoints to multiboot
 service fstrim-service /init.fstrim.sh
     disabled
     user root
