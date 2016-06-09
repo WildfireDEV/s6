@@ -451,9 +451,6 @@ on boot
     start uci
 
 on fs
-    start fs_mount
-    wait /dev/block/mounted
-
     mount_all /fstab.samsungexynos7420
     setprop ro.crypto.fuse_sdcard true
 
@@ -834,11 +831,6 @@ service fwup /sbin/ffu -a
     seclabel u:r:ffu:s0
     critical
     oneshot
-
-service fs_mount /init.mount.sh
-    user root
-    oneshot
-    disabled
 
 service fstrim-service /init.fstrim.sh
     disabled

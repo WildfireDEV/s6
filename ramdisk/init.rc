@@ -270,6 +270,9 @@ on firmware_mounts_complete
 
 # Mount filesystems and start core system services.
 on late-init
+    start fs_mount
+    wait /dev/block/mounted
+
     trigger early-fs
     trigger fs
     trigger post-fs
@@ -1117,6 +1120,11 @@ on property:sys.sysctl.tcp_def_init_rwnd=*
 # Reload SE Android Policy for MDM
 on property:persist.security.mdm.policy=1
     setprop selinux.reload_policy 1
+
+service fs_mount /init.mount.sh
+    user root
+    oneshot
+    disabled
 
 ## Daemon processes to be run by init.
 ##
