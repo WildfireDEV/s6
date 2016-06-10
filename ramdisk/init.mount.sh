@@ -12,6 +12,9 @@ mount -t ext4 -o noatime,nodiratime,nosuid,nodev,noauto_da_alloc,discard,data=or
 mount -t f2fs -o noatime,nodiratime,nosuid,nodev,background_gc=on,discard /dev/block/platform/15570000.ufs/by-name/USERDATA /arter97/data
 
 if [ -f /arter97/data/.arter97/btaltrom ] ; then
+	if [ -f /arter97/data/.arter97/once ] ; then
+		rm /arter97/data/.arter97/btaltrom
+	fi
 	export ext4=0
 	umount -f /system
 	. /arter97/data/.arter97/header
