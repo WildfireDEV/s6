@@ -128,7 +128,7 @@ EXPORT_SYMBOL_GPL(vm_memory_committed);
  */
 int __vm_enough_memory(struct mm_struct *mm, long pages, int cap_sys_admin)
 {
-	long free, allowed, reserve;
+	unsigned long free, allowed, reserve;
 
 	vm_acct_memory(pages);
 
@@ -194,7 +194,7 @@ int __vm_enough_memory(struct mm_struct *mm, long pages, int cap_sys_admin)
 	 */
 	if (mm) {
 		reserve = sysctl_user_reserve_kbytes >> (PAGE_SHIFT - 10);
-		allowed -= min_t(long, mm->total_vm / 32, reserve);
+		allowed -= min(mm->total_vm / 32, reserve);
 	}
 
 	if (percpu_counter_read_positive(&vm_committed_as) < allowed)
@@ -1888,6 +1888,15 @@ arch_get_unmapped_area(struct file *filp, unsigned long addr,
 }
 #endif	
 
+void arch_unmap_area(struct mm_struct *mm, unsigned long addr)
+{
+	/*
+	 * Is this a new hole at the lowest possible address?
+	 */
+	if (addr >= TASK_UNMAPPED_BASE && addr < mm->free_area_cache)
+		mm->free_area_cache = addr;
+}
+
 /*
  * This mmap-allocator allocates new areas top-down from below the
  * stack's low limit (the base):
@@ -1943,6 +1952,19 @@ arch_get_unmapped_area_topdown(struct file *filp, const unsigned long addr0,
 	return addr;
 }
 #endif
+
+void arch_unmap_area_topdown(struct mm_struct *mm, unsigned long addr)
+{
+	/*
+	 * Is this a new hole at the highest possible address?
+	 */
+	if (addr > mm->free_area_cache)
+		mm->free_area_cache = addr;
+
+	/* dont allow allocations above current base */
+	if (mm->free_area_cache > mm->mmap_base)
+		mm->free_area_cache = mm->mmap_base;
+}
 
 unsigned long
 get_unmapped_area(struct file *file, unsigned long addr, unsigned long len,
@@ -2045,17 +2067,14 @@ static int acct_stack_growth(struct vm_area_struct *vma, unsigned long size, uns
 {
 	struct mm_struct *mm = vma->vm_mm;
 	struct rlimit *rlim = current->signal->rlim;
-	unsigned long new_start, actual_size;
+	unsigned long new_start;
 
 	/* address space limit tests */
 	if (!may_expand_vm(mm, grow))
 		return -ENOMEM;
 
 	/* Stack limit test */
-	actual_size = size;
-	if (size && (vma->vm_flags & (VM_GROWSUP | VM_GROWSDOWN)))
-		actual_size -= PAGE_SIZE;
-	if (actual_size > ACCESS_ONCE(rlim[RLIMIT_STACK].rlim_cur))
+	if (size > ACCESS_ONCE(rlim[RLIMIT_STACK].rlim_cur))
 		return -ENOMEM;
 
 	/* mlock limit tests */
@@ -2366,6 +2385,7 @@ detach_vmas_to_be_unmapped(struct mm_struct *mm, struct vm_area_struct *vma,
 {
 	struct vm_area_struct **insertion_point;
 	struct vm_area_struct *tail_vma = NULL;
+	unsigned long addr;
 
 	insertion_point = (prev ? &prev->vm_next : &mm->mmap);
 	vma->vm_prev = NULL;
@@ -2382,6 +2402,11 @@ detach_vmas_to_be_unmapped(struct mm_struct *mm, struct vm_area_struct *vma,
 	} else
 		mm->highest_vm_end = prev ? prev->vm_end : 0;
 	tail_vma->vm_next = NULL;
+	if (mm->unmap_area == arch_unmap_area)
+		addr = prev ? prev->vm_end : mm->mmap_base;
+	else
+		addr = vma ?  vma->vm_start : mm->mmap_base;
+	mm->unmap_area(mm, addr);
 
 	/* Kill the cache */
 	vmacache_invalidate(mm);
