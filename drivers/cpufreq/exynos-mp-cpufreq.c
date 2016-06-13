@@ -26,7 +26,6 @@
 #include <linux/reboot.h>
 #include <linux/delay.h>
 #include <linux/cpu.h>
-#include <linux/ipa.h>
 #include <linux/pm_qos.h>
 #include <linux/kobject.h>
 #include <linux/sysfs.h>
@@ -1428,8 +1427,6 @@ static ssize_t store_volt_table(struct kobject *kobj, struct attribute *attr,
 			exynos_info[cluster]->volt_table[i + invalid_offset] = t[i];
 		}
 	}
-
-	ipa_update();
 
 	mutex_unlock(&cpufreq_lock);
 
