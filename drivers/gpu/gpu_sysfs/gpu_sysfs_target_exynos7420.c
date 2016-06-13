@@ -25,9 +25,9 @@
  * Device ATTR functions. Will be called when read from sysfs.
  * *********************************************************************
  * */
-unsigned int gpu_min_override = 266;
-unsigned int gpu_max_override = 772;
-unsigned int gpu_max_override_screen_off = 0;
+extern unsigned int gpu_min_override;
+extern unsigned int gpu_max_override;
+extern unsigned int gpu_max_override_screen_off;
 
 ssize_t gpu_min_clock_write(struct device *dev, struct device_attribute *attr, const char *buf, size_t count)
 {
