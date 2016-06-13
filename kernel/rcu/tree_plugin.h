@@ -28,7 +28,8 @@
 #include <linux/gfp.h>
 #include <linux/oom.h>
 #include <linux/smpboot.h>
-#include "time/tick-internal.h"
+#include <linux/tick.h>
+#include "../time/tick-internal.h"
 
 #define RCU_KTHREAD_PRIO 1
 
