@@ -1,8 +1,6 @@
 #
 # Makefile for the kernel security code
 #
-CFLAGS_commoncap.o := -fno-strict-aliasing
-CFLAGS_lsm_audit.o := -fno-strict-aliasing
 
 obj-$(CONFIG_KEYS)			+= keys/
 subdir-$(CONFIG_SECURITY_SELINUX)	+= selinux
@@ -35,6 +33,9 @@ obj-$(CONFIG_INTEGRITY)			+= integrity/built-in.o
 obj-$(CONFIG_TIMA)     += tima_uevent/tima_uevent.o
 obj-$(CONFIG_MST_FTM)     += mst_ftmdrv/
 obj-$(CONFIG_MST_LDO)	  += mstdrv/
+
+#TZ ICCC
+obj-$(CONFIG_TZ_ICCC)	  += tz_iccc/
 
 # Knox SDP
 obj-$(CONFIG_SDP) += sdp/
