@@ -172,7 +172,7 @@ acpi_handle acpi_find_child(acpi_handle parent, u64 addr, bool is_bridge)
 }
 EXPORT_SYMBOL_GPL(acpi_find_child);
 
-int acpi_bind_one(struct device *dev, acpi_handle handle)
+static int acpi_bind_one(struct device *dev, acpi_handle handle)
 {
 	struct acpi_device *acpi_dev;
 	acpi_status status;
@@ -255,9 +255,8 @@ int acpi_bind_one(struct device *dev, acpi_handle handle)
 	kfree(physical_node);
 	goto err;
 }
-EXPORT_SYMBOL_GPL(acpi_bind_one);
 
-int acpi_unbind_one(struct device *dev)
+static int acpi_unbind_one(struct device *dev)
 {
 	struct acpi_device_physical_node *entry;
 	struct acpi_device *acpi_dev;
@@ -306,7 +305,6 @@ err:
 	dev_err(dev, "Oops, 'acpi_handle' corrupt\n");
 	return -EINVAL;
 }
-EXPORT_SYMBOL_GPL(acpi_unbind_one);
 
 static int acpi_platform_notify(struct device *dev)
 {

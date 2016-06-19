@@ -14,11 +14,8 @@
 #include <linux/slab.h>
 #include <linux/percpu.h>
 #include <linux/acpi.h>
-<<<<<<< HEAD
 #include <linux/of.h>
 #include <linux/cpufeature.h>
-=======
->>>>>>> ac212b6... ACPI / processor: Use common hotplug infrastructure
 
 #include "base.h"
 
@@ -29,15 +26,6 @@ struct bus_type cpu_subsys = {
 EXPORT_SYMBOL_GPL(cpu_subsys);
 
 static DEFINE_PER_CPU(struct device *, cpu_sys_devices);
-
-static int cpu_subsys_match(struct device *dev, struct device_driver *drv)
-{
-	/* ACPI style match is the only one that may succeed. */
-	if (acpi_driver_match_device(dev, drv))
-		return 1;
-
-	return 0;
-}
 
 #ifdef CONFIG_HOTPLUG_CPU
 static void change_cpu_under_node(struct cpu *cpu,
@@ -144,20 +132,6 @@ static inline void register_cpu_control(struct cpu *cpu)
 }
 #endif /* CONFIG_HOTPLUG_CPU */
 
-<<<<<<< HEAD
-=======
-struct bus_type cpu_subsys = {
-	.name = "cpu",
-	.dev_name = "cpu",
-	.match = cpu_subsys_match,
-#ifdef CONFIG_HOTPLUG_CPU
-	.online = cpu_subsys_online,
-	.offline = cpu_subsys_offline,
-#endif
-};
-EXPORT_SYMBOL_GPL(cpu_subsys);
-
->>>>>>> ac212b6... ACPI / processor: Use common hotplug infrastructure
 #ifdef CONFIG_KEXEC
 #include <linux/kexec.h>
 
