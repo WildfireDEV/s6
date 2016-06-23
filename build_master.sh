@@ -1,7 +1,8 @@
 #!/bin/bash
 if [ ! "${1}" = "skip" ] ; then
-	./build_kernel.sh CC='$(CROSS_COMPILE)gcc' "$@" || exit 1
-	./build_recovery.sh CC='$(CROSS_COMPILE)gcc' "$@" || exit 1
+#	./build_clean.sh
+	./build_kernel.sh CC='$(CROSS_COMPILE)gcc' "$@"
+	./build_recovery.sh CC='$(CROSS_COMPILE)gcc' "$@"
 fi
 
 if [ -e boot.img ] ; then
