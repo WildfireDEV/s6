@@ -1,6 +1,7 @@
 #!/bin/bash
 export KERNELDIR=`readlink -f .`
 export RAMFS_SOURCE=`readlink -f $KERNELDIR/recovery`
+export PARTITION_SIZE=29360128
 
 echo "kerneldir = $KERNELDIR"
 echo "ramfs_source = $RAMFS_SOURCE"
@@ -53,8 +54,13 @@ cd $KERNELDIR
 echo "Making new boot image"
 gcc -w -s -pipe -O2 -Itools/libmincrypt -o tools/mkbootimg/mkbootimg tools/libmincrypt/*.c tools/mkbootimg/mkbootimg.c
 tools/mkbootimg/mkbootimg --kernel $KERNELDIR/arch/arm64/boot/Image --dt $KERNELDIR/dtb.img --ramdisk $RAMFS_TMP.cpio.gz --base 0x10000000 --pagesize 2048 --ramdisk_offset 0x01000000 --tags_offset 0x00000100 --second_offset 0x00f00000 -o $KERNELDIR/recovery.img
+GENERATED_SIZE=$(stat -c %s recovery.img)
+if [[ $GENERATED_SIZE -gt $PARTITION_SIZE ]]; then
+	echo "recovery.img size larger than partition size!" 1>&2
+	exit 1
+fi
 if echo "$@" | grep -q "CC=\$(CROSS_COMPILE)gcc" ; then
-	dd if=/dev/zero bs=$((29360128-$(stat -c %s recovery.img))) count=1 >> recovery.img
+	dd if=/dev/zero bs=$((${PARTITION_SIZE}-${GENERATED_SIZE})) count=1 >> recovery.img
 fi
 
 echo "done"
