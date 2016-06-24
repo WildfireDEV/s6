@@ -26,6 +26,19 @@ config WAKELOCK
 	bool
 	default y
 
+config POWERSUSPEND
+	bool "Power suspend"
+	default y
+	---help---
+	  Call early suspend handlers when the user requested sleep state
+	  changes.
+
+config POWERSUSPEND_DEBUG
+	bool "Powersuspend driver debugging code"
+	depends on POWERSUSPEND
+	help
+	  Output debugging info in dmesg [POWERSUSPEND] (Yank555.lu)
+
 config HIBERNATE_CALLBACKS
 	bool
 
@@ -151,6 +164,18 @@ config PM_RUNTIME
 	  and the bus type drivers of the buses the devices are on are
 	  responsible for the actual handling of the autosuspend requests and
 	  wake-up events.
+
+config PM_RUNTIME_TEST_SYSFS
+	bool "Runtime PM test interface in sysfs" if PM_RUNTIME
+	depends on SYSFS
+	---help---
+	  Enable sysfs interface for RUNTIME PM test. /sys/class/runtime_pm/test/
+	  is created. When you read the file "control" you can get the active
+	  power domain in Exynos. When you write power domain name you can test
+	  the power domain.
+
+config PM_DOMAIN_DEBUG
+	bool "Runtime PM debug message" if PM_RUNTIME
 
 config PM
 	def_bool y
@@ -299,6 +324,10 @@ config PM_GENERIC_DOMAINS_RUNTIME
 	def_bool y
 	depends on PM_RUNTIME && PM_GENERIC_DOMAINS
 
+config PM_GENERIC_DOMAINS_OF
+	def_bool y
+	depends on PM_GENERIC_DOMAINS && OF && !ARCH_EXYNOS
+
 config CPU_PM
 	bool
 	depends on SUSPEND || CPU_IDLE
@@ -309,34 +338,3 @@ config SUSPEND_TIME
 	  Prints the time spent in suspend in the kernel log, and
 	  keeps statistics on the time spent in suspend in
 	  /sys/kernel/debug/suspend_time
-
-config DEDUCE_WAKEUP_REASONS
-	bool
-	default n
-
-config PARTIALRESUME
-	bool "Partial-resume framework"
-	select DEDUCE_WAKEUP_REASONS
-	---help---
-	  Provides hooks for drivers to register partial-resume handlers.
-	  Similar to suspend_again support already in kernel, except that it
-	  operates with kernel threads unfrozen and userspace still frozen,
-	  allowing callbacks to block on work queues and kernel threads.
-	  Partial resume will occur only if all wakeup sources have
-	  partial-resume handlers associated with them, and they all return
-	  true.
-
-config SUSPEND_TIME_TIMEKEEPING
-	bool "get suspend time from timekeeping"
-	default y
-	---help---
-	  Get the suspend time in suspend from timekeeping for the archs
-	  that don't support persistent clock.
-
-config QUICK_WAKEUP
-	bool "Quick wakeup"
-	depends on SUSPEND
-	default y
-	---help---
-	  Allow kernel driver to do periodic jobs without resuming the full system
-	  This option can increase battery life on android powered smartphone.
