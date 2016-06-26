@@ -908,3 +908,4 @@ service DMM-deamon /system/bin/dmm_v2
     class main
     user root
     group root system radio inet net_raw
+
